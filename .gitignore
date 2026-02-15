@@ -1,0 +1,21 @@
+# secrets
+.env
+
+# python junk
+__pycache__/
+*.pyc
+*.pyo
+
+# local data and outputs (GymBot)
+gymbot.db
+gym_data.json
+gym_history.csv
+weekly_volume.png
+
+# if anything similar appears in subfolders
+**/__pycache__/
+**/*.pyc
+**/gymbot.db
+**/gym_data.json
+**/gym_history.csv
+**/weekly_volume.png
