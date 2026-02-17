@@ -2,6 +2,7 @@ import csv
 import io
 import logging
 import os
+import re
 import sqlite3
 from contextlib import closing
 from datetime import datetime, time, timedelta, timezone
@@ -31,6 +32,8 @@ logger = logging.getLogger("GymBot")
 
 ROTATION = ["Chest", "Back", "Shoulders", "Legs"]
 MUSCLE_OPTIONS = ["Chest", "Back", "Legs", "Shoulders"]
+EXERCISE_ASSETS_DIR = Path((os.getenv("GYMBOT_EXERCISE_DIR") or "Exercise").strip())
+EXERCISE_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 EXERCISES_BY_GROUP: Dict[str, List[str]] = {
     "Chest": [
         "Bench Press",
@@ -103,6 +106,7 @@ LANG_COMMAND_SETS: Dict[str, List[Tuple[str, str]]] = {
     "en": [
         ("start", "Register and start"),
         ("workout", "Log a workout"),
+        ("last", "Last 3 workouts"),
         ("history", "Export workout history"),
         ("today", "Today summary"),
         ("thisweek", "This week summary"),
@@ -113,6 +117,7 @@ LANG_COMMAND_SETS: Dict[str, List[Tuple[str, str]]] = {
     "id": [
         ("mulai", "Daftar dan mulai"),
         ("latihan", "Catat latihan"),
+        ("terakhir", "3 latihan terakhir"),
         ("riwayat", "Ekspor riwayat"),
         ("hariini", "Ringkasan hari ini"),
         ("mingguini", "Ringkasan minggu ini"),
@@ -123,6 +128,7 @@ LANG_COMMAND_SETS: Dict[str, List[Tuple[str, str]]] = {
     "ru": [
         ("start", "Запуск и регистрация"),
         ("tren", "Записать тренировку"),
+        ("poslednie", "Last 3 workouts"),
         ("istoriya", "Экспорт истории"),
         ("segodnya", "Итоги за сегодня"),
         ("nedelya", "Итоги за неделю"),
@@ -136,8 +142,10 @@ TR: Dict[str, Dict[str, str]] = {
     "en": {
         "select_language": "Choose your language:",
         "language_saved": "Language saved.",
-        "welcome": "Welcome to GymBot.\nUse /workout to log a workout session.\nNext in your 4-day rotation: {next_group}\n\nCommands:\n/workout, /history, /today, /thisweek, /pr, /help",
-        "help": "/start - Register and initialize reminders\n/workout - Log a workout\n/history - Export workout history CSV\n/today - Today summary stats\n/thisweek - Weekly volume by muscle group\n/pr - Personal records (max weight by exercise)\n/cancel - Cancel active workout conversation",
+        "welcome": "Welcome to GymBot.\nUse /workout to log a workout session.\nNext in your 4-day rotation: {next_group}\n\nCommands:\n/workout, /last, /history, /today, /thisweek, /pr, /help",
+        "welcome_free_plan": "Welcome to GymBot.\nUse /workout to log a workout session.\nAvailable muscle groups: {groups}\nRecent muscle groups: {recent}\n\nCommands:\n/workout, /last, /history, /today, /thisweek, /pr, /help",
+        "help": "/start - Register and initialize reminders\n/workout - Log a workout\n/last - Last 3 completed workouts\n/history - Export workout history CSV\n/today - Today summary stats\n/thisweek - Weekly volume by muscle group\n/pr - Personal records (max weight by exercise)\n/cancel - Cancel active workout conversation",
+        "none_yet": "None yet",
         "skip_day": "Skip day",
         "end_workout": "End workout",
         "yes_warmup": "Yes, I did warm-up run",
@@ -147,7 +155,7 @@ TR: Dict[str, Dict[str, str]] = {
         "use_prev_weight": "Use previous set weight",
         "confirm_weight": "Confirm weight",
         "closed_unfinished": "Closed a previously unfinished workout session.",
-        "choose_muscle": "Choose the muscle group you're training today:",
+        "choose_muscle": "Choose the muscle group you're training today:\nRecent muscle groups: {recent}",
         "workout_ended": "Workout ended.",
         "invalid_selection_restart": "Invalid selection. Use /workout to start again.",
         "unknown_group_restart": "Unknown muscle group. Use /workout to start again.",
@@ -190,6 +198,9 @@ TR: Dict[str, Dict[str, str]] = {
         "cancelled": "Workout conversation cancelled.",
         "no_history": "No workout history found.",
         "history_caption": "Workout history export (CSV)",
+        "last_header": "Last 3 completed workouts (UTC):",
+        "last_line": "{idx}. {ended} | {group} | exercises: {exercise_count} | volume: {total_volume:.2f}",
+        "no_last_workouts": "No completed workouts found yet.",
         "today_summary": "Today Summary (UTC)\nCompleted workouts: {session_count}\nExercises logged: {exercise_count}\nTotal volume: {total_volume:.2f}\nWarm-up sessions: {warmup_count}\nWarm-up total: {warmup_minutes_total:.2f} min, {warmup_distance_total:.2f} km\nVolume by muscle group:\n{group_lines}",
         "week_summary": "This Week Summary (UTC)\nWeek: {start_date} to {end_date}\nCompleted workouts: {session_count}\nExercises logged: {exercise_count}\nTotal weekly volume: {total_volume:.2f}\nWarm-up sessions: {warmup_count}\nWarm-up total: {warmup_minutes_total:.2f} min, {warmup_distance_total:.2f} km\nWeekly volume by muscle group:\n{group_lines}",
         "no_prs": "No PRs yet. Log a workout with /workout.",
@@ -198,14 +209,17 @@ TR: Dict[str, Dict[str, str]] = {
         "error_text": "An unexpected error occurred. Please try again.",
         "workout_finish": "Workout ended.\nExercises saved: {count}\nTotal volume: {volume:.2f}{warmup_line}\nNext scheduled group: {next_group}",
         "workout_finish_empty": "Workout ended with no exercises saved.\nNext scheduled group remains: {next_group}",
+        "workout_finish_free": "Workout ended.\nExercises saved: {count}\nTotal volume: {volume:.2f}{warmup_line}\nRecent muscle groups: {recent}",
+        "workout_finish_empty_free": "Workout ended with no exercises saved.\nRecent muscle groups: {recent}",
         "warmup_line": "\nWarm-up: {minutes:.2f} min, {distance:.2f} km",
         "skipped_day": "Skipped day recorded for {skipped}.\nNext scheduled group: {next_group}",
+        "reminder_free": "GymBot reminder:\nTime to log your workout.\nRecent muscle groups: {recent}\nUse /workout to log your session.",
     },
     "id": {
         "select_language": "Pilih bahasa Anda:",
         "language_saved": "Bahasa disimpan.",
         "welcome": "Selamat datang di GymBot.\nGunakan /latihan untuk mencatat latihan.\nGiliran berikutnya dalam rotasi 4 hari: {next_group}\n\nPerintah:\n/latihan, /riwayat, /hariini, /mingguini, /rekor, /bantuan",
-        "help": "/mulai - Daftar dan aktifkan pengingat\n/latihan - Catat latihan\n/riwayat - Ekspor riwayat CSV\n/hariini - Ringkasan hari ini\n/mingguini - Volume mingguan per otot\n/rekor - Rekor pribadi (beban maksimum)\n/batal - Batalkan sesi latihan",
+        "help": "/mulai - Daftar dan aktifkan pengingat\n/latihan - Catat latihan\n/terakhir - 3 latihan selesai terakhir\n/riwayat - Ekspor riwayat CSV\n/hariini - Ringkasan hari ini\n/mingguini - Volume mingguan per otot\n/rekor - Rekor pribadi (beban maksimum)\n/batal - Batalkan sesi latihan",
         "skip_day": "Lewati hari",
         "end_workout": "Selesai latihan",
         "yes_warmup": "Ya, saya pemanasan lari",
@@ -249,6 +263,14 @@ def start_of_today_utc() -> datetime:
     return n.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
+def format_iso_utc(ts: str) -> str:
+    try:
+        dt = datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
+    except (TypeError, ValueError):
+        return ts
+    return dt.strftime("%Y-%m-%d %H:%M")
+
+
 def parse_weight(text: str) -> Optional[float]:
     try:
         value = Decimal(text.strip().replace(",", "."))
@@ -277,6 +299,56 @@ def parse_warmup_input(text: str) -> Optional[Tuple[float, float]]:
 
 def clamp_weight_kg(value: float) -> float:
     return round(min(500.0, max(1.0, value)), 2)
+
+
+ExerciseOption = Tuple[str, Optional[Path]]
+
+
+def normalize_key(value: str) -> str:
+    value = value.lower().strip()
+    value = re.sub(r"[^a-z0-9]+", " ", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def pretty_exercise_name(stem: str) -> str:
+    cleaned = stem.replace("_", " ").replace("-", " ")
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def canonical_group_name(raw_name: str) -> str:
+    cleaned = raw_name.replace("_", " ").replace("-", " ").strip()
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    if cleaned.lower().endswith(" exercise"):
+        cleaned = cleaned[: -len(" exercise")].strip()
+    return " ".join(part.capitalize() for part in cleaned.split())
+
+
+def load_exercise_catalog(base_dir: Path) -> Dict[str, List[ExerciseOption]]:
+    catalog: Dict[str, List[ExerciseOption]] = {}
+    if base_dir.exists() and base_dir.is_dir():
+        for group_dir in sorted(base_dir.iterdir(), key=lambda p: p.name.lower()):
+            if not group_dir.is_dir():
+                continue
+
+            group_name = canonical_group_name(group_dir.name)
+            group_key = normalize_key(group_name)
+            options: List[ExerciseOption] = []
+            for image_path in sorted(group_dir.iterdir(), key=lambda p: p.name.lower()):
+                if not image_path.is_file() or image_path.suffix.lower() not in EXERCISE_IMAGE_SUFFIXES:
+                    continue
+                stem_key = normalize_key(image_path.stem)
+                if not stem_key or stem_key == group_key:
+                    continue
+                options.append((pretty_exercise_name(image_path.stem), image_path))
+
+            if options:
+                catalog[group_name] = options
+
+    if not catalog:
+        for group in MUSCLE_OPTIONS:
+            catalog[group] = [(name, None) for name in EXERCISES_BY_GROUP.get(group, [])]
+
+    return catalog
 
 
 class GymDB:
@@ -393,6 +465,42 @@ class GymDB:
             lang = row["language"] if row["language"] in SUPPORTED_LANGS else "en"
             result.append((int(row["user_id"]), int(row["chat_id"]), str(lang)))
         return result
+
+    def get_recent_trained_groups(self, user_id: int, limit: int = 3) -> List[str]:
+        with closing(self.connect()) as conn:
+            rows = conn.execute(
+                """
+                SELECT muscle_group
+                FROM workout_sessions
+                WHERE user_id = ?
+                  AND status = 'completed'
+                ORDER BY ended_at DESC
+                LIMIT ?
+                """,
+                (user_id, limit),
+            ).fetchall()
+        return [str(row["muscle_group"]) for row in rows if row["muscle_group"]]
+
+    def get_last_completed_workouts(self, user_id: int, limit: int = 3) -> List[sqlite3.Row]:
+        with closing(self.connect()) as conn:
+            return conn.execute(
+                """
+                SELECT
+                    ws.id,
+                    ws.muscle_group,
+                    ws.ended_at,
+                    COUNT(e.id) AS exercise_count,
+                    COALESCE(SUM(e.volume), 0) AS total_volume
+                FROM workout_sessions ws
+                LEFT JOIN exercises e ON e.session_id = ws.id
+                WHERE ws.user_id = ?
+                  AND ws.status = 'completed'
+                GROUP BY ws.id, ws.muscle_group, ws.ended_at
+                ORDER BY ws.ended_at DESC
+                LIMIT ?
+                """,
+                (user_id, limit),
+            ).fetchall()
 
     def get_next_group(self, user_id: int) -> str:
         with closing(self.connect()) as conn:
@@ -627,7 +735,7 @@ class GymDB:
                 (user_id, start_iso, end_iso),
             ).fetchone()
 
-        group_volumes: Dict[str, float] = {group: 0.0 for group in ROTATION}
+        group_volumes: Dict[str, float] = {}
         for row in group_rows:
             group_volumes[row["muscle_group"]] = float(row["group_volume"])
 
@@ -746,6 +854,30 @@ def user_lang(context: ContextTypes.DEFAULT_TYPE, user_id: int) -> str:
     return lang if lang in SUPPORTED_LANGS else "en"
 
 
+def get_muscle_groups(context: ContextTypes.DEFAULT_TYPE) -> List[str]:
+    catalog = context.application.bot_data.get("exercise_catalog", {})
+    if isinstance(catalog, dict) and catalog:
+        groups = [group for group, options in catalog.items() if isinstance(options, list) and options]
+        if groups:
+            return sorted(groups, key=str.lower)
+    return list(MUSCLE_OPTIONS)
+
+
+def recent_groups_text(db: GymDB, user_id: int, lang: str, limit: int = 3) -> str:
+    recent = db.get_recent_trained_groups(user_id, limit=limit)
+    return ", ".join(recent) if recent else tr(lang, "none_yet")
+
+
+def welcome_text(context: ContextTypes.DEFAULT_TYPE, user_id: int, lang: str) -> str:
+    db = get_db(context)
+    return tr(
+        lang,
+        "welcome_free_plan",
+        groups=", ".join(get_muscle_groups(context)),
+        recent=recent_groups_text(db, user_id, lang),
+    )
+
+
 async def ensure_language_selected(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int) -> Optional[str]:
     db = get_db(context)
     lang = db.get_user_language(user_id)
@@ -771,17 +903,11 @@ async def set_chat_commands_for_language(bot, chat_id: int, lang: str) -> None:
         logger.exception("Failed setting chat command menu for chat_id=%s lang=%s", chat_id, lang)
 
 
-def group_keyboard(next_group: str, lang: str) -> InlineKeyboardMarkup:
+def group_keyboard(muscle_groups: List[str], lang: str) -> InlineKeyboardMarkup:
     rows = []
-    for group in MUSCLE_OPTIONS:
-        label = f"{group} (Next)" if group == next_group else group
-        rows.append([InlineKeyboardButton(label, callback_data=f"{CB_GROUP_PREFIX}{group}")])
-    rows.append(
-        [
-            InlineKeyboardButton(tr(lang, "skip_day"), callback_data=CB_SKIP_DAY),
-            InlineKeyboardButton(tr(lang, "end_workout"), callback_data=CB_END_WORKOUT),
-        ]
-    )
+    for group in muscle_groups:
+        rows.append([InlineKeyboardButton(group, callback_data=f"{CB_GROUP_PREFIX}{group}")])
+    rows.append([InlineKeyboardButton(tr(lang, "end_workout"), callback_data=CB_END_WORKOUT)])
     return InlineKeyboardMarkup(rows)
 
 
@@ -791,11 +917,19 @@ def end_keyboard(lang: str) -> InlineKeyboardMarkup:
     )
 
 
-def exercise_keyboard(muscle_group: str, lang: str) -> InlineKeyboardMarkup:
-    exercises = EXERCISES_BY_GROUP.get(muscle_group, [])
+def get_exercise_options(context: ContextTypes.DEFAULT_TYPE, muscle_group: str) -> List[ExerciseOption]:
+    catalog = context.application.bot_data.get("exercise_catalog", {})
+    if isinstance(catalog, dict):
+        options = catalog.get(muscle_group)
+        if isinstance(options, list) and options:
+            return options
+    return [(name, None) for name in EXERCISES_BY_GROUP.get(muscle_group, [])]
+
+
+def exercise_keyboard(exercises: List[ExerciseOption], lang: str) -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton(name, callback_data=f"{CB_EX_PREFIX}{idx}")]
-        for idx, name in enumerate(exercises)
+        for idx, (name, _) in enumerate(exercises)
     ]
     rows.append([InlineKeyboardButton(tr(lang, "end_workout"), callback_data=CB_FINISH_SESSION)])
     return InlineKeyboardMarkup(rows)
@@ -919,15 +1053,9 @@ async def daily_reminder_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
     db = get_db(context)
     uid = int(user_id)
-    next_group = db.get_next_group(uid)
     lang = db.get_user_language(uid) or "en"
-    text = (
-        ("GymBot reminder:\nNext scheduled muscle group: {next_group}\nUse /workout to log your session.")
-        if lang not in ("id", "ru")
-        else ("Pengingat GymBot:\nOtot berikutnya: {next_group}\nGunakan /workout untuk mencatat sesi.")
-        if lang == "id"
-        else ("Напоминание GymBot:\nСледующая группа: {next_group}\nИспользуйте /workout для записи.")
-    ).format(next_group=next_group)
+    recent = recent_groups_text(db, uid, lang)
+    text = tr(lang, "reminder_free", recent=recent)
     try:
         await context.bot.send_message(chat_id=int(chat_id), text=text)
     except Exception:
@@ -951,10 +1079,9 @@ async def language_select_cb(update: Update, context: ContextTypes.DEFAULT_TYPE)
     db.set_user_language(user_id, lang)
     schedule_user_reminder(context.application, user_id, update.effective_chat.id)
     await set_chat_commands_for_language(context.bot, update.effective_chat.id, lang)
-    next_group = db.get_next_group(user_id)
 
     await query.edit_message_text(tr(lang, "language_saved"))
-    await query.message.reply_text(tr(lang, "welcome", next_group=next_group))
+    await query.message.reply_text(welcome_text(context, user_id, lang))
 
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -962,15 +1089,13 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if user_id is None:
         return
 
-    db = get_db(context)
     lang = await ensure_language_selected(update, context, user_id)
     if not lang:
         return
 
-    next_group = db.get_next_group(user_id)
     schedule_user_reminder(context.application, user_id, update.effective_chat.id)
     await set_chat_commands_for_language(context.bot, update.effective_chat.id, lang)
-    await update.effective_message.reply_text(tr(lang, "welcome", next_group=next_group))
+    await update.effective_message.reply_text(welcome_text(context, user_id, lang))
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -997,12 +1122,13 @@ async def workout_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         db.close_session(int(active["id"]), "cancelled")
         await update.effective_message.reply_text(tr(lang, "closed_unfinished"))
 
-    next_group = db.get_next_group(user_id)
+    muscle_groups = get_muscle_groups(context)
+    recent = recent_groups_text(db, user_id, lang)
     context.user_data.pop("workout", None)
 
     await update.effective_message.reply_text(
-        tr(lang, "choose_muscle"),
-        reply_markup=group_keyboard(next_group, lang),
+        tr(lang, "choose_muscle", recent=recent),
+        reply_markup=group_keyboard(muscle_groups, lang),
     )
     return SELECT_MUSCLE
 
@@ -1019,14 +1145,6 @@ async def select_muscle_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     db = get_db(context)
     data = query.data or ""
 
-    if data == CB_SKIP_DAY:
-        skipped, next_group = db.skip_day(user.id)
-        context.user_data.pop("workout", None)
-        await query.edit_message_text(
-            tr(lang, "skipped_day", skipped=skipped, next_group=next_group)
-        )
-        return ConversationHandler.END
-
     if data == CB_END_WORKOUT:
         context.user_data.pop("workout", None)
         await query.edit_message_text(tr(lang, "workout_ended"))
@@ -1037,7 +1155,7 @@ async def select_muscle_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return ConversationHandler.END
 
     group = data.split(":", 1)[1]
-    if group not in MUSCLE_OPTIONS:
+    if group not in set(get_muscle_groups(context)):
         await query.edit_message_text(tr(lang, "unknown_group_restart"))
         return ConversationHandler.END
 
@@ -1076,10 +1194,11 @@ async def warmup_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     if data == CB_WARMUP_NO:
         db.set_session_warmup(session_id, done=False, minutes=None, distance_km=None)
+        exercise_options = get_exercise_options(context, group)
         await query.edit_message_text(tr(lang, "warmup_skipped"))
         await query.message.reply_text(
             tr(lang, "pick_exercise", group=group),
-            reply_markup=exercise_keyboard(group, lang),
+            reply_markup=exercise_keyboard(exercise_options, lang),
         )
         return SELECT_EXERCISE
 
@@ -1108,10 +1227,11 @@ async def warmup_input_msg(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     db.set_session_warmup(int(workout["session_id"]), done=True, minutes=minutes, distance_km=distance)
 
     group = str(workout["muscle_group"])
+    exercise_options = get_exercise_options(context, group)
     await update.effective_message.reply_text(tr(lang, "warmup_saved", minutes=minutes, distance=distance))
     await update.effective_message.reply_text(
         tr(lang, "pick_exercise", group=group),
-        reply_markup=exercise_keyboard(group, lang),
+        reply_markup=exercise_keyboard(exercise_options, lang),
     )
     return SELECT_EXERCISE
 
@@ -1140,18 +1260,27 @@ async def select_exercise_cb(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return ConversationHandler.END
 
     group = str(workout["muscle_group"])
-    exercises = EXERCISES_BY_GROUP.get(group, [])
-    if ex_index < 0 or ex_index >= len(exercises):
+    exercise_options = get_exercise_options(context, group)
+    if ex_index < 0 or ex_index >= len(exercise_options):
         await query.edit_message_text(tr(lang, "exercise_not_found"))
         return ConversationHandler.END
 
-    exercise_name = exercises[ex_index]
+    exercise_name, image_path = exercise_options[ex_index]
     workout["exercise_name"] = exercise_name
     workout.pop("sets_target", None)
     workout.pop("reps_list", None)
     workout.pop("weights_list", None)
     workout.pop("current_weight", None)
     await query.edit_message_text(tr(lang, "exercise_selected", exercise=exercise_name))
+    if image_path and query.message:
+        try:
+            with image_path.open("rb") as image_file:
+                await query.message.reply_photo(
+                    photo=InputFile(image_file, filename=image_path.name),
+                    caption=exercise_name,
+                )
+        except Exception:
+            logger.exception("Failed to send exercise image: %s", image_path)
     await query.message.reply_text(
         tr(lang, "choose_sets"),
         reply_markup=sets_keyboard(lang),
@@ -1408,10 +1537,11 @@ async def post_action_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if data == CB_NEXT_EXERCISE:
         group = str(workout["muscle_group"])
+        exercise_options = get_exercise_options(context, group)
         await query.edit_message_text(tr(lang, "add_next_exercise"))
         await query.message.reply_text(
             tr(lang, "pick_exercise", group=group),
-            reply_markup=exercise_keyboard(group, lang),
+            reply_markup=exercise_keyboard(exercise_options, lang),
         )
         return SELECT_EXERCISE
 
@@ -1428,10 +1558,11 @@ async def post_action_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
         workout["last_exercise_id"] = None
         group = str(workout["muscle_group"])
+        exercise_options = get_exercise_options(context, group)
         await query.edit_message_text(tr(lang, "replace_pick"))
         await query.message.reply_text(
             tr(lang, "pick_exercise", group=group),
-            reply_markup=exercise_keyboard(group, lang),
+            reply_markup=exercise_keyboard(exercise_options, lang),
         )
         return SELECT_EXERCISE
 
@@ -1458,7 +1589,6 @@ async def finish_workout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return ConversationHandler.END
 
     session_id = int(workout["session_id"])
-    muscle_group = str(workout["muscle_group"])
     count, total_volume = db.get_session_totals(session_id)
     session = db.get_session(session_id)
     warmup_line = ""
@@ -1469,13 +1599,12 @@ async def finish_workout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if count > 0:
         db.close_session(session_id, "completed")
-        db.set_next_group_after(user.id, muscle_group)
-        next_group = db.get_next_group(user.id)
-        text = tr(lang, "workout_finish", count=count, volume=total_volume, warmup_line=warmup_line, next_group=next_group)
+        recent = recent_groups_text(db, user.id, lang)
+        text = tr(lang, "workout_finish_free", count=count, volume=total_volume, warmup_line=warmup_line, recent=recent)
     else:
         db.close_session(session_id, "cancelled")
-        next_group = db.get_next_group(user.id)
-        text = tr(lang, "workout_finish_empty", next_group=next_group)
+        recent = recent_groups_text(db, user.id, lang)
+        text = tr(lang, "workout_finish_empty_free", recent=recent)
 
     context.user_data.pop("workout", None)
 
@@ -1496,6 +1625,36 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     uid = update.effective_user.id if update.effective_user else 0
     await update.effective_message.reply_text(tr(user_lang(context, uid), "cancelled"))
     return ConversationHandler.END
+
+
+async def last_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = ensure_registered(update, context)
+    if user_id is None:
+        return
+    lang = await ensure_language_selected(update, context, user_id)
+    if not lang:
+        return
+
+    db = get_db(context)
+    rows = db.get_last_completed_workouts(user_id=user_id, limit=3)
+    if not rows:
+        await update.effective_message.reply_text(tr(lang, "no_last_workouts"))
+        return
+
+    lines = [tr(lang, "last_header")]
+    for idx, row in enumerate(rows, start=1):
+        lines.append(
+            tr(
+                lang,
+                "last_line",
+                idx=idx,
+                ended=format_iso_utc(str(row["ended_at"] or "")),
+                group=str(row["muscle_group"]),
+                exercise_count=int(row["exercise_count"] or 0),
+                total_volume=float(row["total_volume"] or 0.0),
+            )
+        )
+    await update.effective_message.reply_text("\n".join(lines))
 
 
 async def history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1559,8 +1718,10 @@ async def history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 def render_group_volume_lines(group_volumes: Dict[str, float]) -> str:
+    if not group_volumes:
+        return "-"
     lines = []
-    for group in ROTATION:
+    for group in sorted(group_volumes.keys(), key=str.lower):
         lines.append(f"{group}: {group_volumes.get(group, 0.0):.2f}")
     return "\n".join(lines)
 
@@ -1676,6 +1837,7 @@ def print_deployment_instructions() -> None:
     print("2) Set environment variables:")
     print("   TELEGRAM_BOT_TOKEN=your_bot_token")
     print("   GYMBOT_DB_PATH=./gymbot.db")
+    print("   GYMBOT_EXERCISE_DIR=./Exercise")
     print("   GYMBOT_REMINDER_HOUR_UTC=18")
     print("   GYMBOT_REMINDER_MINUTE_UTC=0")
     print("3) Run in polling mode:")
@@ -1697,9 +1859,17 @@ def build_application() -> Application:
     db_path = (os.getenv("DB_PATH") or os.getenv("GYMBOT_DB_PATH") or "/data/gymbot.db").strip()
     db = GymDB(db_path)
     db.init_schema()
+    exercise_catalog = load_exercise_catalog(EXERCISE_ASSETS_DIR)
 
     app = Application.builder().token(token).post_init(on_startup).build()
     app.bot_data["db"] = db
+    app.bot_data["exercise_catalog"] = exercise_catalog
+
+    loaded_count = sum(len(options) for options in exercise_catalog.values())
+    if loaded_count > 0:
+        logger.info("Loaded %d exercise options from %s", loaded_count, EXERCISE_ASSETS_DIR)
+    else:
+        logger.warning("No exercise assets found in %s; using fallback defaults.", EXERCISE_ASSETS_DIR)
 
     workout_conv = ConversationHandler(
         entry_points=[CommandHandler(["workout", "latihan", "tren"], workout_cmd)],
@@ -1707,7 +1877,7 @@ def build_application() -> Application:
             SELECT_MUSCLE: [
                 CallbackQueryHandler(
                     select_muscle_cb,
-                    pattern=r"^(group:.+|skip_day|end_workout)$",
+                    pattern=r"^(group:.+|end_workout)$",
                 )
             ],
             WARMUP_CHOICE: [
@@ -1758,6 +1928,7 @@ def build_application() -> Application:
     app.add_handler(CallbackQueryHandler(language_select_cb, pattern=r"^lang:(en|id|ru)$"))
     app.add_handler(CommandHandler(["start", "mulai"], start_cmd))
     app.add_handler(CommandHandler(["help", "bantuan", "pomosh"], help_cmd))
+    app.add_handler(CommandHandler(["last", "terakhir", "poslednie"], last_cmd))
     app.add_handler(CommandHandler(["history", "riwayat", "istoriya"], history_cmd))
     app.add_handler(CommandHandler(["today", "hariini", "segodnya"], today_cmd))
     app.add_handler(CommandHandler(["thisweek", "mingguini", "nedelya"], thisweek_cmd))
