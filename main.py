@@ -74,7 +74,7 @@ EXERCISES_BY_GROUP: Dict[str, List[str]] = {
     ],
 }
 
-SELECT_MUSCLE, SELECT_EXERCISE, EX_REPS, EX_WEIGHT, POST_ACTION = range(5)
+SELECT_MUSCLE, WARMUP_CHOICE, WARMUP_INPUT, SELECT_EXERCISE, EX_REPS, EX_WEIGHT, POST_ACTION = range(7)
 
 CB_GROUP_PREFIX = "group:"
 CB_EX_PREFIX = "ex:"
@@ -83,6 +83,8 @@ CB_END_WORKOUT = "end_workout"
 CB_NEXT_EXERCISE = "next_exercise"
 CB_REPLACE_EXERCISE = "replace_exercise"
 CB_FINISH_SESSION = "finish_session"
+CB_WARMUP_YES = "warmup_yes"
+CB_WARMUP_NO = "warmup_no"
 
 
 def now_utc() -> datetime:
@@ -150,6 +152,22 @@ def parse_weight_sequence(text: str) -> Optional[List[float]]:
     return weights
 
 
+def parse_warmup_input(text: str) -> Optional[Tuple[float, float]]:
+    parts = text.replace(",", ".").split()
+    if len(parts) != 2:
+        return None
+
+    try:
+        minutes = float(parts[0])
+        distance = float(parts[1])
+    except ValueError:
+        return None
+
+    if minutes <= 0 or distance < 0:
+        return None
+    return round(minutes, 2), round(distance, 3)
+
+
 class GymDB:
     def __init__(self, db_path: str) -> None:
         self.db_path = db_path
@@ -182,6 +200,9 @@ class GymDB:
                     muscle_group TEXT NOT NULL,
                     started_at TEXT NOT NULL,
                     ended_at TEXT,
+                    warmup_done INTEGER NOT NULL DEFAULT 0,
+                    warmup_minutes REAL,
+                    warmup_distance_km REAL,
                     status TEXT NOT NULL CHECK(status IN ('active', 'completed', 'skipped', 'cancelled')),
                     FOREIGN KEY(user_id) REFERENCES users(user_id)
                 );
@@ -209,11 +230,19 @@ class GymDB:
                 """
             )
 
-            cols = {row["name"] for row in conn.execute("PRAGMA table_info(exercises)")}
-            if "reps_sequence" not in cols:
+            ex_cols = {row["name"] for row in conn.execute("PRAGMA table_info(exercises)")}
+            if "reps_sequence" not in ex_cols:
                 conn.execute("ALTER TABLE exercises ADD COLUMN reps_sequence TEXT")
-            if "weight_sequence" not in cols:
+            if "weight_sequence" not in ex_cols:
                 conn.execute("ALTER TABLE exercises ADD COLUMN weight_sequence TEXT")
+
+            session_cols = {row["name"] for row in conn.execute("PRAGMA table_info(workout_sessions)")}
+            if "warmup_done" not in session_cols:
+                conn.execute("ALTER TABLE workout_sessions ADD COLUMN warmup_done INTEGER NOT NULL DEFAULT 0")
+            if "warmup_minutes" not in session_cols:
+                conn.execute("ALTER TABLE workout_sessions ADD COLUMN warmup_minutes REAL")
+            if "warmup_distance_km" not in session_cols:
+                conn.execute("ALTER TABLE workout_sessions ADD COLUMN warmup_distance_km REAL")
 
     def register_user(self, user_id: int, chat_id: int, username: str, first_name: str) -> None:
         ts = now_iso()
@@ -294,6 +323,34 @@ class GymDB:
                 (status, now_iso(), session_id),
             )
 
+    def set_session_warmup(
+        self,
+        session_id: int,
+        done: bool,
+        minutes: Optional[float] = None,
+        distance_km: Optional[float] = None,
+    ) -> None:
+        with closing(self.connect()) as conn, conn:
+            conn.execute(
+                """
+                UPDATE workout_sessions
+                SET warmup_done = ?, warmup_minutes = ?, warmup_distance_km = ?
+                WHERE id = ?
+                """,
+                (1 if done else 0, minutes, distance_km, session_id),
+            )
+
+    def get_session(self, session_id: int) -> Optional[sqlite3.Row]:
+        with closing(self.connect()) as conn:
+            return conn.execute(
+                """
+                SELECT *
+                FROM workout_sessions
+                WHERE id = ?
+                """,
+                (session_id,),
+            ).fetchone()
+
     def skip_day(self, user_id: int) -> Tuple[str, str]:
         current_group = self.get_next_group(user_id)
         self.create_session(user_id=user_id, muscle_group=current_group, status="skipped")
@@ -373,9 +430,23 @@ class GymDB:
         with closing(self.connect()) as conn:
             return conn.execute(
                 """
-                SELECT created_at, muscle_group, name, sets, reps, reps_sequence, weight, weight_sequence, volume, session_id
-                FROM exercises
-                WHERE user_id = ?
+                SELECT
+                    e.created_at,
+                    e.muscle_group,
+                    e.name,
+                    e.sets,
+                    e.reps,
+                    e.reps_sequence,
+                    e.weight,
+                    e.weight_sequence,
+                    e.volume,
+                    e.session_id,
+                    ws.warmup_done,
+                    ws.warmup_minutes,
+                    ws.warmup_distance_km
+                FROM exercises e
+                JOIN workout_sessions ws ON ws.id = e.session_id
+                WHERE e.user_id = ?
                 ORDER BY created_at ASC
                 """,
                 (user_id,),
@@ -413,6 +484,22 @@ class GymDB:
                 (user_id, start_iso, end_iso),
             ).fetchall()
 
+            warmup_totals = conn.execute(
+                """
+                SELECT
+                    COUNT(*) AS warmup_count,
+                    COALESCE(SUM(warmup_minutes), 0) AS warmup_minutes_total,
+                    COALESCE(SUM(warmup_distance_km), 0) AS warmup_distance_total
+                FROM workout_sessions
+                WHERE user_id = ?
+                  AND warmup_done = 1
+                  AND started_at >= ?
+                  AND started_at < ?
+                  AND status != 'cancelled'
+                """,
+                (user_id, start_iso, end_iso),
+            ).fetchone()
+
         group_volumes: Dict[str, float] = {group: 0.0 for group in ROTATION}
         for row in group_rows:
             group_volumes[row["muscle_group"]] = float(row["group_volume"])
@@ -422,6 +509,9 @@ class GymDB:
             "total_volume": float(totals["total_volume"]),
             "session_count": int(session_count["session_count"]),
             "group_volumes": group_volumes,
+            "warmup_count": int(warmup_totals["warmup_count"]),
+            "warmup_minutes_total": float(warmup_totals["warmup_minutes_total"]),
+            "warmup_distance_total": float(warmup_totals["warmup_distance_total"]),
         }
 
     def get_personal_records(self, user_id: int) -> List[sqlite3.Row]:
@@ -484,6 +574,18 @@ def exercise_keyboard(muscle_group: str) -> InlineKeyboardMarkup:
     ]
     rows.append([InlineKeyboardButton("End workout", callback_data=CB_FINISH_SESSION)])
     return InlineKeyboardMarkup(rows)
+
+
+def warmup_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("Yes, I did warm-up run", callback_data=CB_WARMUP_YES),
+                InlineKeyboardButton("No warm-up", callback_data=CB_WARMUP_NO),
+            ],
+            [InlineKeyboardButton("End workout", callback_data=CB_FINISH_SESSION)],
+        ]
+    )
 
 
 def post_exercise_keyboard() -> InlineKeyboardMarkup:
@@ -638,6 +740,70 @@ async def select_muscle_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     await query.edit_message_text(f"{group} workout started.")
     await query.message.reply_text(
+        "Did you do your warm-up run?",
+        reply_markup=warmup_keyboard(),
+    )
+    return WARMUP_CHOICE
+
+
+async def warmup_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+
+    workout = context.user_data.get("workout")
+    if not workout:
+        await query.edit_message_text("No active session. Use /workout.")
+        return ConversationHandler.END
+
+    db = get_db(context)
+    data = query.data or ""
+    session_id = int(workout["session_id"])
+    group = str(workout["muscle_group"])
+
+    if data == CB_FINISH_SESSION:
+        return await finish_workout(update, context)
+
+    if data == CB_WARMUP_NO:
+        db.set_session_warmup(session_id, done=False, minutes=None, distance_km=None)
+        await query.edit_message_text("Warm-up skipped.")
+        await query.message.reply_text(
+            f"Pick an exercise for {group}:",
+            reply_markup=exercise_keyboard(group),
+        )
+        return SELECT_EXERCISE
+
+    if data == CB_WARMUP_YES:
+        await query.edit_message_text(
+            "Send warm-up as: minutes distance_km\nExample: 5 1"
+        )
+        return WARMUP_INPUT
+
+    await query.edit_message_text("Invalid option. Use /workout to restart.")
+    return ConversationHandler.END
+
+
+async def warmup_input_msg(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    workout = context.user_data.get("workout")
+    if not workout:
+        await update.effective_message.reply_text("No active session. Use /workout.")
+        return ConversationHandler.END
+
+    parsed = parse_warmup_input(update.effective_message.text or "")
+    if parsed is None:
+        await update.effective_message.reply_text(
+            "Please send warm-up like: 5 1 (minutes distance_km)"
+        )
+        return WARMUP_INPUT
+
+    minutes, distance = parsed
+    db = get_db(context)
+    db.set_session_warmup(int(workout["session_id"]), done=True, minutes=minutes, distance_km=distance)
+
+    group = str(workout["muscle_group"])
+    await update.effective_message.reply_text(
+        f"Warm-up saved: {minutes:.2f} min, {distance:.2f} km."
+    )
+    await update.effective_message.reply_text(
         f"Pick an exercise for {group}:",
         reply_markup=exercise_keyboard(group),
     )
@@ -850,6 +1016,12 @@ async def finish_workout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     session_id = int(workout["session_id"])
     muscle_group = str(workout["muscle_group"])
     count, total_volume = db.get_session_totals(session_id)
+    session = db.get_session(session_id)
+    warmup_line = ""
+    if session and int(session["warmup_done"] or 0) == 1:
+        warmup_minutes = float(session["warmup_minutes"] or 0.0)
+        warmup_distance = float(session["warmup_distance_km"] or 0.0)
+        warmup_line = f"\nWarm-up: {warmup_minutes:.2f} min, {warmup_distance:.2f} km"
 
     if count > 0:
         db.close_session(session_id, "completed")
@@ -859,6 +1031,8 @@ async def finish_workout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             f"Workout ended.\n"
             f"Exercises saved: {count}\n"
             f"Total volume: {total_volume:.2f}\n"
+            f"{warmup_line}"
+            f"\n"
             f"Next scheduled group: {next_group}"
         )
     else:
@@ -912,6 +1086,9 @@ async def history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             "reps_sequence",
             "weight_kg",
             "weight_sequence",
+            "warmup_done",
+            "warmup_minutes",
+            "warmup_distance_km",
             "volume",
             "session_id",
         ]
@@ -927,6 +1104,9 @@ async def history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 r["reps_sequence"] or "",
                 f"{float(r['weight']):.2f}",
                 r["weight_sequence"] or "",
+                int(r["warmup_done"] or 0),
+                f"{float(r['warmup_minutes'] or 0.0):.2f}",
+                f"{float(r['warmup_distance_km'] or 0.0):.2f}",
                 f"{float(r['volume']):.2f}",
                 r["session_id"],
             ]
@@ -962,6 +1142,8 @@ async def today_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"Completed workouts: {summary['session_count']}\n"
         f"Exercises logged: {summary['exercise_count']}\n"
         f"Total volume: {summary['total_volume']:.2f}\n"
+        f"Warm-up sessions: {summary['warmup_count']}\n"
+        f"Warm-up total: {summary['warmup_minutes_total']:.2f} min, {summary['warmup_distance_total']:.2f} km\n"
         "Volume by muscle group:\n"
         f"{render_group_volume_lines(summary['group_volumes'])}"
     )
@@ -985,6 +1167,8 @@ async def thisweek_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         f"Completed workouts: {summary['session_count']}\n"
         f"Exercises logged: {summary['exercise_count']}\n"
         f"Total weekly volume: {summary['total_volume']:.2f}\n"
+        f"Warm-up sessions: {summary['warmup_count']}\n"
+        f"Warm-up total: {summary['warmup_minutes_total']:.2f} min, {summary['warmup_distance_total']:.2f} km\n"
         "Weekly volume by muscle group:\n"
         f"{render_group_volume_lines(summary['group_volumes'])}"
     )
@@ -1073,6 +1257,16 @@ def build_application() -> Application:
                     select_muscle_cb,
                     pattern=r"^(group:.+|skip_day|end_workout)$",
                 )
+            ],
+            WARMUP_CHOICE: [
+                CallbackQueryHandler(
+                    warmup_choice_cb,
+                    pattern=r"^(warmup_yes|warmup_no|finish_session)$",
+                )
+            ],
+            WARMUP_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, warmup_input_msg),
+                CallbackQueryHandler(finish_workout, pattern=r"^finish_session$"),
             ],
             SELECT_EXERCISE: [
                 CallbackQueryHandler(
