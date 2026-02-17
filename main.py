@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputFile, Update
+from telegram import BotCommand, BotCommandScopeChat, InlineKeyboardButton, InlineKeyboardMarkup, InputFile, Update
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -99,6 +99,39 @@ LANG_LABELS = {
     "ru": "Русский",
 }
 
+LANG_COMMAND_SETS: Dict[str, List[Tuple[str, str]]] = {
+    "en": [
+        ("start", "Register and start"),
+        ("workout", "Log a workout"),
+        ("history", "Export workout history"),
+        ("today", "Today summary"),
+        ("thisweek", "This week summary"),
+        ("pr", "Personal records"),
+        ("help", "Show help"),
+        ("cancel", "Cancel current flow"),
+    ],
+    "id": [
+        ("mulai", "Daftar dan mulai"),
+        ("latihan", "Catat latihan"),
+        ("riwayat", "Ekspor riwayat"),
+        ("hariini", "Ringkasan hari ini"),
+        ("mingguini", "Ringkasan minggu ini"),
+        ("rekor", "Rekor pribadi"),
+        ("bantuan", "Tampilkan bantuan"),
+        ("batal", "Batalkan alur saat ini"),
+    ],
+    "ru": [
+        ("start", "Запуск и регистрация"),
+        ("tren", "Записать тренировку"),
+        ("istoriya", "Экспорт истории"),
+        ("segodnya", "Итоги за сегодня"),
+        ("nedelya", "Итоги за неделю"),
+        ("rekord", "Личные рекорды"),
+        ("pomosh", "Показать помощь"),
+        ("otmena", "Отменить текущий ввод"),
+    ],
+}
+
 TR: Dict[str, Dict[str, str]] = {
     "en": {
         "select_language": "Choose your language:",
@@ -171,8 +204,8 @@ TR: Dict[str, Dict[str, str]] = {
     "id": {
         "select_language": "Pilih bahasa Anda:",
         "language_saved": "Bahasa disimpan.",
-        "welcome": "Selamat datang di GymBot.\nGunakan /workout untuk mencatat latihan.\nGiliran berikutnya dalam rotasi 4 hari: {next_group}\n\nPerintah:\n/workout, /history, /today, /thisweek, /pr, /help",
-        "help": "/start - Daftar dan aktifkan pengingat\n/workout - Catat latihan\n/history - Ekspor riwayat CSV\n/today - Ringkasan hari ini\n/thisweek - Volume mingguan per otot\n/pr - Rekor pribadi (beban maksimum)\n/cancel - Batalkan sesi latihan",
+        "welcome": "Selamat datang di GymBot.\nGunakan /latihan untuk mencatat latihan.\nGiliran berikutnya dalam rotasi 4 hari: {next_group}\n\nPerintah:\n/latihan, /riwayat, /hariini, /mingguini, /rekor, /bantuan",
+        "help": "/mulai - Daftar dan aktifkan pengingat\n/latihan - Catat latihan\n/riwayat - Ekspor riwayat CSV\n/hariini - Ringkasan hari ini\n/mingguini - Volume mingguan per otot\n/rekor - Rekor pribadi (beban maksimum)\n/batal - Batalkan sesi latihan",
         "skip_day": "Lewati hari",
         "end_workout": "Selesai latihan",
         "yes_warmup": "Ya, saya pemanasan lari",
@@ -185,8 +218,8 @@ TR: Dict[str, Dict[str, str]] = {
     "ru": {
         "select_language": "Выберите язык:",
         "language_saved": "Язык сохранен.",
-        "welcome": "Добро пожаловать в GymBot.\nИспользуйте /workout для записи тренировки.\nСледующая группа в 4-дневной ротации: {next_group}\n\nКоманды:\n/workout, /history, /today, /thisweek, /pr, /help",
-        "help": "/start - Регистрация и напоминания\n/workout - Записать тренировку\n/history - Экспорт CSV\n/today - Статистика за сегодня\n/thisweek - Недельный объем по мышцам\n/pr - Личные рекорды (макс. вес)\n/cancel - Отменить текущую тренировку",
+        "welcome": "Добро пожаловать в GymBot.\nИспользуйте /tren для записи тренировки.\nСледующая группа в 4-дневной ротации: {next_group}\n\nКоманды:\n/tren, /istoriya, /segodnya, /nedelya, /rekord, /pomosh",
+        "help": "/start - Регистрация и напоминания\n/tren - Записать тренировку\n/istoriya - Экспорт CSV\n/segodnya - Статистика за сегодня\n/nedelya - Недельный объем по мышцам\n/rekord - Личные рекорды (макс. вес)\n/otmena - Отменить текущую тренировку",
         "skip_day": "Пропустить день",
         "end_workout": "Завершить",
         "yes_warmup": "Да, сделал разминку",
@@ -349,6 +382,17 @@ class GymDB:
                 "SELECT user_id, chat_id FROM users WHERE chat_id IS NOT NULL"
             ).fetchall()
         return [(int(r["user_id"]), int(r["chat_id"])) for r in rows]
+
+    def list_users_with_language(self) -> List[Tuple[int, int, str]]:
+        with closing(self.connect()) as conn:
+            rows = conn.execute(
+                "SELECT user_id, chat_id, language FROM users WHERE chat_id IS NOT NULL"
+            ).fetchall()
+        result: List[Tuple[int, int, str]] = []
+        for row in rows:
+            lang = row["language"] if row["language"] in SUPPORTED_LANGS else "en"
+            result.append((int(row["user_id"]), int(row["chat_id"]), str(lang)))
+        return result
 
     def get_next_group(self, user_id: int) -> str:
         with closing(self.connect()) as conn:
@@ -716,6 +760,17 @@ async def ensure_language_selected(update: Update, context: ContextTypes.DEFAULT
     return None
 
 
+async def set_chat_commands_for_language(bot, chat_id: int, lang: str) -> None:
+    commands = LANG_COMMAND_SETS.get(lang) or LANG_COMMAND_SETS["en"]
+    try:
+        await bot.set_my_commands(
+            commands=[BotCommand(command=name, description=desc) for name, desc in commands],
+            scope=BotCommandScopeChat(chat_id=chat_id),
+        )
+    except Exception:
+        logger.exception("Failed setting chat command menu for chat_id=%s lang=%s", chat_id, lang)
+
+
 def group_keyboard(next_group: str, lang: str) -> InlineKeyboardMarkup:
     rows = []
     for group in MUSCLE_OPTIONS:
@@ -895,6 +950,7 @@ async def language_select_cb(update: Update, context: ContextTypes.DEFAULT_TYPE)
     db = get_db(context)
     db.set_user_language(user_id, lang)
     schedule_user_reminder(context.application, user_id, update.effective_chat.id)
+    await set_chat_commands_for_language(context.bot, update.effective_chat.id, lang)
     next_group = db.get_next_group(user_id)
 
     await query.edit_message_text(tr(lang, "language_saved"))
@@ -913,6 +969,7 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     next_group = db.get_next_group(user_id)
     schedule_user_reminder(context.application, user_id, update.effective_chat.id)
+    await set_chat_commands_for_language(context.bot, update.effective_chat.id, lang)
     await update.effective_message.reply_text(tr(lang, "welcome", next_group=next_group))
 
 
@@ -1606,6 +1663,8 @@ async def on_startup(application: Application) -> None:
     users = db.list_users_for_reminders()
     for user_id, chat_id in users:
         schedule_user_reminder(application, user_id, chat_id)
+    for _, chat_id, lang in db.list_users_with_language():
+        await set_chat_commands_for_language(application.bot, chat_id, lang)
 
     logger.info("Startup complete. Scheduled reminders for %d users.", len(users))
 
@@ -1643,7 +1702,7 @@ def build_application() -> Application:
     app.bot_data["db"] = db
 
     workout_conv = ConversationHandler(
-        entry_points=[CommandHandler("workout", workout_cmd)],
+        entry_points=[CommandHandler(["workout", "latihan", "tren"], workout_cmd)],
         states={
             SELECT_MUSCLE: [
                 CallbackQueryHandler(
@@ -1697,13 +1756,13 @@ def build_application() -> Application:
     )
 
     app.add_handler(CallbackQueryHandler(language_select_cb, pattern=r"^lang:(en|id|ru)$"))
-    app.add_handler(CommandHandler("start", start_cmd))
-    app.add_handler(CommandHandler("help", help_cmd))
-    app.add_handler(CommandHandler("history", history_cmd))
-    app.add_handler(CommandHandler("today", today_cmd))
-    app.add_handler(CommandHandler("thisweek", thisweek_cmd))
-    app.add_handler(CommandHandler("pr", pr_cmd))
-    app.add_handler(CommandHandler("cancel", cancel_cmd))
+    app.add_handler(CommandHandler(["start", "mulai"], start_cmd))
+    app.add_handler(CommandHandler(["help", "bantuan", "pomosh"], help_cmd))
+    app.add_handler(CommandHandler(["history", "riwayat", "istoriya"], history_cmd))
+    app.add_handler(CommandHandler(["today", "hariini", "segodnya"], today_cmd))
+    app.add_handler(CommandHandler(["thisweek", "mingguini", "nedelya"], thisweek_cmd))
+    app.add_handler(CommandHandler(["pr", "rekor", "rekord"], pr_cmd))
+    app.add_handler(CommandHandler(["cancel", "batal", "otmena"], cancel_cmd))
     app.add_handler(workout_conv)
 
     app.add_error_handler(error_handler)
