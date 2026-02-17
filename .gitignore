@@ -1,21 +1,29 @@
-# secrets
+# Secrets
 .env
+.env.*
+!.env.example
 
-# python junk
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
+.venv/
+venv/
+env/
 
-# local data and outputs (GymBot)
-gymbot.db
-gym_data.json
-gym_history.csv
-weekly_volume.png
+# Local data
+*.db
+*.sqlite
+*.sqlite3
+/data/
+*.csv
+*.log
 
-# if anything similar appears in subfolders
-**/__pycache__/
-**/*.pyc
-**/gymbot.db
-**/gym_data.json
-**/gym_history.csv
-**/weekly_volume.png
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Railway local metadata
+.railway/
