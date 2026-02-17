@@ -514,6 +514,20 @@ class GymDB:
             return None
         return float(row["weight"])
 
+    def get_exercise_max_weight(self, user_id: int, exercise_name: str) -> Optional[float]:
+        with closing(self.connect()) as conn:
+            row = conn.execute(
+                """
+                SELECT MAX(weight) AS max_weight
+                FROM exercises
+                WHERE user_id = ? AND name = ?
+                """,
+                (user_id, exercise_name),
+            ).fetchone()
+        if row is None or row["max_weight"] is None:
+            return None
+        return float(row["max_weight"])
+
 def get_db(context: ContextTypes.DEFAULT_TYPE) -> GymDB:
     return context.application.bot_data["db"]
 
@@ -608,6 +622,7 @@ def reps_keyboard() -> InlineKeyboardMarkup:
 def weight_adjust_keyboard(can_copy_prev: bool) -> InlineKeyboardMarkup:
     rows = [
         [
+            InlineKeyboardButton("-20", callback_data=f"{CB_WADJ_PREFIX}-20"),
             InlineKeyboardButton("-10", callback_data=f"{CB_WADJ_PREFIX}-10"),
             InlineKeyboardButton("-2.5", callback_data=f"{CB_WADJ_PREFIX}-2.5"),
             InlineKeyboardButton("-1", callback_data=f"{CB_WADJ_PREFIX}-1"),
@@ -616,6 +631,8 @@ def weight_adjust_keyboard(can_copy_prev: bool) -> InlineKeyboardMarkup:
             InlineKeyboardButton("+1", callback_data=f"{CB_WADJ_PREFIX}1"),
             InlineKeyboardButton("+2.5", callback_data=f"{CB_WADJ_PREFIX}2.5"),
             InlineKeyboardButton("+10", callback_data=f"{CB_WADJ_PREFIX}10"),
+            InlineKeyboardButton("+20", callback_data=f"{CB_WADJ_PREFIX}20"),
+            InlineKeyboardButton("+50", callback_data=f"{CB_WADJ_PREFIX}50"),
         ],
     ]
     if can_copy_prev:
@@ -1086,6 +1103,10 @@ async def save_current_exercise(
         return ConversationHandler.END
 
     db = get_db(context)
+    previous_pr = db.get_exercise_max_weight(
+        user_id=update.effective_user.id,
+        exercise_name=str(workout["exercise_name"]),
+    )
     ex_id, volume = db.add_exercise(
         session_id=int(workout["session_id"]),
         user_id=update.effective_user.id,
@@ -1109,8 +1130,16 @@ async def save_current_exercise(
     workout.pop("weights_list", None)
     workout.pop("current_weight", None)
 
+    pr_line = ""
+    if previous_pr is None:
+        pr_line = f"\n🏆 First PR set for {saved_name}: {primary_weight:.2f} kg 💪"
+    elif float(primary_weight) > float(previous_pr):
+        pr_line = (
+            f"\n🏆 New PR for {saved_name}: {previous_pr:.2f} -> {primary_weight:.2f} kg 💪"
+        )
+
     await update.effective_message.reply_text(
-        f"Saved: {saved_name} | volume {volume:.2f}\nWhat next?",
+        f"Saved: {saved_name} | volume {volume:.2f}{pr_line}\nWhat next?",
         reply_markup=post_exercise_keyboard(),
     )
     return POST_ACTION
@@ -1352,9 +1381,9 @@ async def pr_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.effective_message.reply_text("No PRs yet. Log a workout with /workout.")
         return
 
-    lines = ["Personal Records (max weight by exercise):"]
+    lines = ["🏆 Personal Records (max weight by exercise):"]
     for r in records:
-        lines.append(f"{r['name']}: {float(r['max_weight']):.2f} kg")
+        lines.append(f"💪 {r['name']}: {float(r['max_weight']):.2f} kg")
     await update.effective_message.reply_text("\n".join(lines))
 
 
