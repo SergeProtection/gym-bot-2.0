@@ -93,6 +93,7 @@ CB_REP_PREFIX = "rep:"
 CB_WADJ_PREFIX = "wadj:"
 CB_WCONFIRM = "wconfirm"
 CB_WCOPY = "wcopy"
+CB_BACK_EXERCISE = "back_exercise"
 CB_LANG_PREFIX = "lang:"
 
 SUPPORTED_LANGS = ("en", "id", "ru")
@@ -152,6 +153,8 @@ TR: Dict[str, Dict[str, str]] = {
         "no_warmup": "No warm-up",
         "add_another": "Add another exercise",
         "replace_exercise": "Replace exercise",
+        "back_exercise": "Back to exercises",
+        "back_exercise_done": "Selection cleared. Pick an exercise again:",
         "use_prev_weight": "Use previous set weight",
         "confirm_weight": "Confirm weight",
         "closed_unfinished": "Closed a previously unfinished workout session.",
@@ -926,6 +929,34 @@ def get_exercise_options(context: ContextTypes.DEFAULT_TYPE, muscle_group: str) 
     return [(name, None) for name in EXERCISES_BY_GROUP.get(muscle_group, [])]
 
 
+def clear_pending_exercise_input(workout: Dict[str, object]) -> None:
+    workout.pop("exercise_name", None)
+    workout.pop("sets", None)
+    workout.pop("reps", None)
+    workout.pop("reps_sequence", None)
+    workout.pop("sets_target", None)
+    workout.pop("reps_list", None)
+    workout.pop("weights_list", None)
+    workout.pop("current_weight", None)
+
+
+async def back_to_exercise_list(update: Update, context: ContextTypes.DEFAULT_TYPE, lang: str) -> int:
+    query = update.callback_query
+    workout = context.user_data.get("workout")
+    if not query or not workout:
+        return ConversationHandler.END
+
+    clear_pending_exercise_input(workout)
+    group = str(workout["muscle_group"])
+    exercise_options = get_exercise_options(context, group)
+    await query.edit_message_text(tr(lang, "back_exercise_done"))
+    await query.message.reply_text(
+        tr(lang, "pick_exercise", group=group),
+        reply_markup=exercise_keyboard(exercise_options, lang),
+    )
+    return SELECT_EXERCISE
+
+
 def exercise_keyboard(exercises: List[ExerciseOption], lang: str) -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton(name, callback_data=f"{CB_EX_PREFIX}{idx}")]
@@ -960,6 +991,7 @@ def sets_keyboard(lang: str) -> InlineKeyboardMarkup:
                 InlineKeyboardButton("5", callback_data=f"{CB_SETS_PREFIX}5"),
                 InlineKeyboardButton("6", callback_data=f"{CB_SETS_PREFIX}6"),
             ],
+            [InlineKeyboardButton(tr(lang, "back_exercise"), callback_data=CB_BACK_EXERCISE)],
             [InlineKeyboardButton(tr(lang, "end_workout"), callback_data=CB_FINISH_SESSION)],
         ]
     )
@@ -973,6 +1005,7 @@ def reps_keyboard(lang: str) -> InlineKeyboardMarkup:
             for rep in range(start, start + 5)
         ]
         rows.append(row)
+    rows.append([InlineKeyboardButton(tr(lang, "back_exercise"), callback_data=CB_BACK_EXERCISE)])
     rows.append([InlineKeyboardButton(tr(lang, "end_workout"), callback_data=CB_FINISH_SESSION)])
     return InlineKeyboardMarkup(rows)
 
@@ -996,6 +1029,7 @@ def weight_adjust_keyboard(can_copy_prev: bool, lang: str) -> InlineKeyboardMark
     if can_copy_prev:
         rows.append([InlineKeyboardButton(tr(lang, "use_prev_weight"), callback_data=CB_WCOPY)])
     rows.append([InlineKeyboardButton(tr(lang, "confirm_weight"), callback_data=CB_WCONFIRM)])
+    rows.append([InlineKeyboardButton(tr(lang, "back_exercise"), callback_data=CB_BACK_EXERCISE)])
     rows.append([InlineKeyboardButton(tr(lang, "end_workout"), callback_data=CB_FINISH_SESSION)])
     return InlineKeyboardMarkup(rows)
 
@@ -1301,6 +1335,8 @@ async def sets_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     data = query.data or ""
     if data == CB_FINISH_SESSION:
         return await finish_workout(update, context)
+    if data == CB_BACK_EXERCISE:
+        return await back_to_exercise_list(update, context, lang)
     if not data.startswith(CB_SETS_PREFIX):
         await query.edit_message_text(tr(lang, "invalid_sets_restart"))
         return ConversationHandler.END
@@ -1341,6 +1377,8 @@ async def reps_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     data = query.data or ""
     if data == CB_FINISH_SESSION:
         return await finish_workout(update, context)
+    if data == CB_BACK_EXERCISE:
+        return await back_to_exercise_list(update, context, lang)
     if not data.startswith(CB_REP_PREFIX):
         await query.edit_message_text(tr(lang, "invalid_reps_restart"))
         return ConversationHandler.END
@@ -1399,6 +1437,8 @@ async def weight_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     data = query.data or ""
     if data == CB_FINISH_SESSION:
         return await finish_workout(update, context)
+    if data == CB_BACK_EXERCISE:
+        return await back_to_exercise_list(update, context, lang)
 
     sets_target = int(workout.get("sets_target", 0))
     reps_list: List[int] = list(workout.get("reps_list", []))
@@ -1899,19 +1939,19 @@ def build_application() -> Application:
             EX_SETS: [
                 CallbackQueryHandler(
                     sets_choice_cb,
-                    pattern=r"^(sets:[1-6]|finish_session)$",
+                    pattern=r"^(sets:[1-6]|back_exercise|finish_session)$",
                 ),
             ],
             EX_REPS: [
                 CallbackQueryHandler(
                     reps_choice_cb,
-                    pattern=r"^(rep:(?:[1-9]|1[0-9]|20)|finish_session)$",
+                    pattern=r"^(rep:(?:[1-9]|1[0-9]|20)|back_exercise|finish_session)$",
                 ),
             ],
             EX_WEIGHT: [
                 CallbackQueryHandler(
                     weight_choice_cb,
-                    pattern=r"^(wadj:[+-]?(?:\d+(?:\.\d+)?)|wconfirm|wcopy|finish_session)$",
+                    pattern=r"^(wadj:[+-]?(?:\d+(?:\.\d+)?)|wconfirm|wcopy|back_exercise|finish_session)$",
                 ),
             ],
             POST_ACTION: [
