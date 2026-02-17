@@ -593,14 +593,14 @@ def sets_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("🟥▫️▫️▫️▫️▫️ 1", callback_data=f"{CB_SETS_PREFIX}1"),
-                InlineKeyboardButton("🟥🟥▫️▫️▫️▫️ 2", callback_data=f"{CB_SETS_PREFIX}2"),
-                InlineKeyboardButton("🟥🟥🟥▫️▫️▫️ 3", callback_data=f"{CB_SETS_PREFIX}3"),
+                InlineKeyboardButton("1", callback_data=f"{CB_SETS_PREFIX}1"),
+                InlineKeyboardButton("2", callback_data=f"{CB_SETS_PREFIX}2"),
+                InlineKeyboardButton("3", callback_data=f"{CB_SETS_PREFIX}3"),
             ],
             [
-                InlineKeyboardButton("🟥🟥🟥🟥▫️▫️ 4", callback_data=f"{CB_SETS_PREFIX}4"),
-                InlineKeyboardButton("🟥🟥🟥🟥🟥▫️ 5", callback_data=f"{CB_SETS_PREFIX}5"),
-                InlineKeyboardButton("🟥🟥🟥🟥🟥🟥 6", callback_data=f"{CB_SETS_PREFIX}6"),
+                InlineKeyboardButton("4", callback_data=f"{CB_SETS_PREFIX}4"),
+                InlineKeyboardButton("5", callback_data=f"{CB_SETS_PREFIX}5"),
+                InlineKeyboardButton("6", callback_data=f"{CB_SETS_PREFIX}6"),
             ],
             [InlineKeyboardButton("End workout", callback_data=CB_FINISH_SESSION)],
         ]
@@ -622,17 +622,17 @@ def reps_keyboard() -> InlineKeyboardMarkup:
 def weight_adjust_keyboard(can_copy_prev: bool) -> InlineKeyboardMarkup:
     rows = [
         [
-            InlineKeyboardButton("🟫 -20", callback_data=f"{CB_WADJ_PREFIX}-20"),
-            InlineKeyboardButton("🟥 -10", callback_data=f"{CB_WADJ_PREFIX}-10"),
-            InlineKeyboardButton("🟧 -2.5", callback_data=f"{CB_WADJ_PREFIX}-2.5"),
-            InlineKeyboardButton("🟨 -1", callback_data=f"{CB_WADJ_PREFIX}-1"),
+            InlineKeyboardButton("-20", callback_data=f"{CB_WADJ_PREFIX}-20"),
+            InlineKeyboardButton("-10", callback_data=f"{CB_WADJ_PREFIX}-10"),
+            InlineKeyboardButton("-2.5", callback_data=f"{CB_WADJ_PREFIX}-2.5"),
+            InlineKeyboardButton("-1", callback_data=f"{CB_WADJ_PREFIX}-1"),
         ],
         [
-            InlineKeyboardButton("🟨 +1", callback_data=f"{CB_WADJ_PREFIX}1"),
-            InlineKeyboardButton("🟧 +2.5", callback_data=f"{CB_WADJ_PREFIX}2.5"),
-            InlineKeyboardButton("🟥 +10", callback_data=f"{CB_WADJ_PREFIX}10"),
-            InlineKeyboardButton("🟫 +20", callback_data=f"{CB_WADJ_PREFIX}20"),
-            InlineKeyboardButton("⬛ +50", callback_data=f"{CB_WADJ_PREFIX}50"),
+            InlineKeyboardButton("+1", callback_data=f"{CB_WADJ_PREFIX}1"),
+            InlineKeyboardButton("+2.5", callback_data=f"{CB_WADJ_PREFIX}2.5"),
+            InlineKeyboardButton("+10", callback_data=f"{CB_WADJ_PREFIX}10"),
+            InlineKeyboardButton("+20", callback_data=f"{CB_WADJ_PREFIX}20"),
+            InlineKeyboardButton("+50", callback_data=f"{CB_WADJ_PREFIX}50"),
         ],
     ]
     if can_copy_prev:
