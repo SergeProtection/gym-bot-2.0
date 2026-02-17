@@ -74,7 +74,7 @@ EXERCISES_BY_GROUP: Dict[str, List[str]] = {
     ],
 }
 
-SELECT_MUSCLE, WARMUP_CHOICE, WARMUP_INPUT, SELECT_EXERCISE, EX_REPS, EX_WEIGHT, POST_ACTION = range(7)
+SELECT_MUSCLE, WARMUP_CHOICE, WARMUP_INPUT, SELECT_EXERCISE, EX_SETS, EX_REPS, EX_WEIGHT, POST_ACTION = range(8)
 
 CB_GROUP_PREFIX = "group:"
 CB_EX_PREFIX = "ex:"
@@ -85,6 +85,11 @@ CB_REPLACE_EXERCISE = "replace_exercise"
 CB_FINISH_SESSION = "finish_session"
 CB_WARMUP_YES = "warmup_yes"
 CB_WARMUP_NO = "warmup_no"
+CB_SETS_PREFIX = "sets:"
+CB_REP_PREFIX = "rep:"
+CB_WADJ_PREFIX = "wadj:"
+CB_WCONFIRM = "wconfirm"
+CB_WCOPY = "wcopy"
 
 
 def now_utc() -> datetime:
@@ -104,14 +109,6 @@ def start_of_today_utc() -> datetime:
     return n.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def parse_positive_int(text: str) -> Optional[int]:
-    try:
-        value = int(text.strip())
-    except (TypeError, ValueError):
-        return None
-    return value if value > 0 else None
-
-
 def parse_weight(text: str) -> Optional[float]:
     try:
         value = Decimal(text.strip().replace(",", "."))
@@ -120,36 +117,6 @@ def parse_weight(text: str) -> Optional[float]:
     if value < 0:
         return None
     return float(value)
-
-
-def parse_reps_sequence(text: str) -> Optional[List[int]]:
-    raw_parts = text.replace(",", " ").split()
-    if not raw_parts:
-        return None
-
-    reps: List[int] = []
-    for part in raw_parts:
-        if not part.isdigit():
-            return None
-        value = int(part)
-        if value <= 0:
-            return None
-        reps.append(value)
-    return reps
-
-
-def parse_weight_sequence(text: str) -> Optional[List[float]]:
-    raw_parts = text.strip().split()
-    if not raw_parts:
-        return None
-
-    weights: List[float] = []
-    for part in raw_parts:
-        value = parse_weight(part)
-        if value is None:
-            return None
-        weights.append(value)
-    return weights
 
 
 def parse_warmup_input(text: str) -> Optional[Tuple[float, float]]:
@@ -166,6 +133,10 @@ def parse_warmup_input(text: str) -> Optional[Tuple[float, float]]:
     if minutes <= 0 or distance < 0:
         return None
     return round(minutes, 2), round(distance, 3)
+
+
+def clamp_weight_kg(value: float) -> float:
+    return round(min(500.0, max(1.0, value)), 2)
 
 
 class GymDB:
@@ -527,6 +498,22 @@ class GymDB:
                 (user_id,),
             ).fetchall()
 
+    def get_last_weight(self, user_id: int, exercise_name: str) -> Optional[float]:
+        with closing(self.connect()) as conn:
+            row = conn.execute(
+                """
+                SELECT weight
+                FROM exercises
+                WHERE user_id = ? AND name = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (user_id, exercise_name),
+            ).fetchone()
+        if row is None:
+            return None
+        return float(row["weight"])
+
 def get_db(context: ContextTypes.DEFAULT_TYPE) -> GymDB:
     return context.application.bot_data["db"]
 
@@ -585,6 +572,64 @@ def warmup_keyboard() -> InlineKeyboardMarkup:
             ],
             [InlineKeyboardButton("End workout", callback_data=CB_FINISH_SESSION)],
         ]
+    )
+
+
+def sets_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("1", callback_data=f"{CB_SETS_PREFIX}1"),
+                InlineKeyboardButton("2", callback_data=f"{CB_SETS_PREFIX}2"),
+                InlineKeyboardButton("3", callback_data=f"{CB_SETS_PREFIX}3"),
+            ],
+            [
+                InlineKeyboardButton("4", callback_data=f"{CB_SETS_PREFIX}4"),
+                InlineKeyboardButton("5", callback_data=f"{CB_SETS_PREFIX}5"),
+                InlineKeyboardButton("6", callback_data=f"{CB_SETS_PREFIX}6"),
+            ],
+            [InlineKeyboardButton("End workout", callback_data=CB_FINISH_SESSION)],
+        ]
+    )
+
+
+def reps_keyboard() -> InlineKeyboardMarkup:
+    rows = []
+    for start in (1, 6, 11, 16):
+        row = [
+            InlineKeyboardButton(str(rep), callback_data=f"{CB_REP_PREFIX}{rep}")
+            for rep in range(start, start + 5)
+        ]
+        rows.append(row)
+    rows.append([InlineKeyboardButton("End workout", callback_data=CB_FINISH_SESSION)])
+    return InlineKeyboardMarkup(rows)
+
+
+def weight_adjust_keyboard(can_copy_prev: bool) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton("-10", callback_data=f"{CB_WADJ_PREFIX}-10"),
+            InlineKeyboardButton("-2.5", callback_data=f"{CB_WADJ_PREFIX}-2.5"),
+            InlineKeyboardButton("-1", callback_data=f"{CB_WADJ_PREFIX}-1"),
+        ],
+        [
+            InlineKeyboardButton("+1", callback_data=f"{CB_WADJ_PREFIX}1"),
+            InlineKeyboardButton("+2.5", callback_data=f"{CB_WADJ_PREFIX}2.5"),
+            InlineKeyboardButton("+10", callback_data=f"{CB_WADJ_PREFIX}10"),
+        ],
+    ]
+    if can_copy_prev:
+        rows.append([InlineKeyboardButton("Use previous set weight", callback_data=CB_WCOPY)])
+    rows.append([InlineKeyboardButton("Confirm weight", callback_data=CB_WCONFIRM)])
+    rows.append([InlineKeyboardButton("End workout", callback_data=CB_FINISH_SESSION)])
+    return InlineKeyboardMarkup(rows)
+
+
+def weight_prompt_text(set_no: int, total_sets: int, current_weight: float) -> str:
+    return (
+        f"Set {set_no}/{total_sets} weight\n"
+        f"Current: {current_weight:.2f} kg\n"
+        "Adjust with buttons, then tap Confirm weight."
     )
 
 
@@ -840,36 +885,187 @@ async def select_exercise_cb(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     exercise_name = exercises[ex_index]
     workout["exercise_name"] = exercise_name
+    workout.pop("sets_target", None)
+    workout.pop("reps_list", None)
+    workout.pop("weights_list", None)
+    workout.pop("current_weight", None)
     await query.edit_message_text(f"Exercise selected: {exercise_name}")
     await query.message.reply_text(
-        "Enter reps per set like: 8 8 6",
-        reply_markup=end_keyboard(),
+        "Choose number of sets (1-6):",
+        reply_markup=sets_keyboard(),
+    )
+    return EX_SETS
+
+
+async def sets_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+
+    workout = context.user_data.get("workout")
+    if not workout:
+        await query.edit_message_text("No active session. Use /workout.")
+        return ConversationHandler.END
+
+    data = query.data or ""
+    if data == CB_FINISH_SESSION:
+        return await finish_workout(update, context)
+    if not data.startswith(CB_SETS_PREFIX):
+        await query.edit_message_text("Invalid sets selection. Use /workout to restart.")
+        return ConversationHandler.END
+
+    try:
+        sets_count = int(data.split(":", 1)[1])
+    except ValueError:
+        await query.edit_message_text("Invalid sets selection. Use /workout to restart.")
+        return ConversationHandler.END
+
+    if sets_count < 1 or sets_count > 6:
+        await query.edit_message_text("Sets must be between 1 and 6.")
+        return EX_SETS
+
+    workout["sets_target"] = sets_count
+    workout["reps_list"] = []
+    workout["weights_list"] = []
+    workout.pop("current_weight", None)
+
+    await query.edit_message_text(f"Sets selected: {sets_count}")
+    await query.message.reply_text(
+        f"Set 1/{sets_count}: choose reps (1-20)",
+        reply_markup=reps_keyboard(),
     )
     return EX_REPS
 
 
-async def exercise_reps_msg(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def reps_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+
     workout = context.user_data.get("workout")
     if not workout:
-        await update.effective_message.reply_text("No active session. Use /workout.")
+        await query.edit_message_text("No active session. Use /workout.")
         return ConversationHandler.END
 
-    reps_list = parse_reps_sequence(update.effective_message.text or "")
-    if reps_list is None:
-        await update.effective_message.reply_text(
-            "Enter reps as space-separated numbers, e.g. 8 8 6"
-        )
+    data = query.data or ""
+    if data == CB_FINISH_SESSION:
+        return await finish_workout(update, context)
+    if not data.startswith(CB_REP_PREFIX):
+        await query.edit_message_text("Invalid reps selection. Use /workout to restart.")
+        return ConversationHandler.END
+
+    try:
+        rep = int(data.split(":", 1)[1])
+    except ValueError:
+        await query.edit_message_text("Invalid reps selection. Use /workout to restart.")
+        return ConversationHandler.END
+
+    if rep < 1 or rep > 20:
+        await query.edit_message_text("Reps must be between 1 and 20.")
         return EX_REPS
 
-    workout["sets"] = len(reps_list)
-    workout["reps"] = max(1, round(sum(reps_list) / len(reps_list)))
-    workout["reps_sequence"] = " ".join(str(x) for x in reps_list)
-    await update.effective_message.reply_text(
-        "Enter weight per set in kg like: 60 57.5 55\n"
-        "Tip: send one number (e.g. 60) to use the same weight for all sets.",
-        reply_markup=end_keyboard(),
+    sets_target = int(workout.get("sets_target", 0))
+    reps_list: List[int] = list(workout.get("reps_list", []))
+    if sets_target <= 0:
+        await query.edit_message_text("Sets are missing. Use /workout to restart.")
+        return ConversationHandler.END
+    if len(reps_list) >= sets_target:
+        await query.edit_message_text("All sets already entered. Use /workout to restart.")
+        return ConversationHandler.END
+
+    reps_list.append(rep)
+    workout["reps_list"] = reps_list
+
+    set_no = len(reps_list)
+    prev_weights: List[float] = list(workout.get("weights_list", []))
+    if prev_weights:
+        current_weight = clamp_weight_kg(prev_weights[-1])
+    else:
+        db = get_db(context)
+        last_weight = db.get_last_weight(update.effective_user.id, str(workout.get("exercise_name", "")))
+        current_weight = clamp_weight_kg(last_weight if last_weight is not None else 20.0)
+
+    workout["current_weight"] = current_weight
+
+    await query.edit_message_text(f"Set {set_no}/{sets_target} reps selected: {rep}")
+    await query.message.reply_text(
+        weight_prompt_text(set_no, sets_target, current_weight),
+        reply_markup=weight_adjust_keyboard(can_copy_prev=len(prev_weights) > 0),
     )
     return EX_WEIGHT
+
+
+async def weight_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+
+    workout = context.user_data.get("workout")
+    if not workout:
+        await query.edit_message_text("No active session. Use /workout.")
+        return ConversationHandler.END
+
+    data = query.data or ""
+    if data == CB_FINISH_SESSION:
+        return await finish_workout(update, context)
+
+    sets_target = int(workout.get("sets_target", 0))
+    reps_list: List[int] = list(workout.get("reps_list", []))
+    weights_list: List[float] = list(workout.get("weights_list", []))
+    current_weight = clamp_weight_kg(float(workout.get("current_weight", 20.0)))
+    set_no = len(reps_list)
+
+    if sets_target <= 0 or set_no <= 0:
+        await query.edit_message_text("Set context missing. Use /workout to restart.")
+        return ConversationHandler.END
+
+    if data.startswith(CB_WADJ_PREFIX):
+        try:
+            delta = float(data.split(":", 1)[1])
+        except ValueError:
+            await query.edit_message_text("Invalid weight adjustment.")
+            return EX_WEIGHT
+        current_weight = clamp_weight_kg(current_weight + delta)
+        workout["current_weight"] = current_weight
+        await query.edit_message_text(
+            weight_prompt_text(set_no, sets_target, current_weight),
+            reply_markup=weight_adjust_keyboard(can_copy_prev=len(weights_list) > 0),
+        )
+        return EX_WEIGHT
+
+    if data == CB_WCOPY:
+        if not weights_list:
+            await query.answer("No previous set weight yet.", show_alert=True)
+            return EX_WEIGHT
+        current_weight = clamp_weight_kg(weights_list[-1])
+        workout["current_weight"] = current_weight
+        await query.edit_message_text(
+            weight_prompt_text(set_no, sets_target, current_weight),
+            reply_markup=weight_adjust_keyboard(can_copy_prev=True),
+        )
+        return EX_WEIGHT
+
+    if data == CB_WCONFIRM:
+        weights_list.append(current_weight)
+        workout["weights_list"] = weights_list
+        await query.edit_message_text(
+            f"Set {set_no}/{sets_target} weight saved: {current_weight:.2f} kg"
+        )
+
+        if len(weights_list) < sets_target:
+            next_set = len(weights_list) + 1
+            await query.message.reply_text(
+                f"Set {next_set}/{sets_target}: choose reps (1-20)",
+                reply_markup=reps_keyboard(),
+            )
+            return EX_REPS
+
+        workout["sets"] = sets_target
+        workout["reps"] = max(1, round(sum(reps_list) / len(reps_list)))
+        workout["reps_sequence"] = " ".join(str(x) for x in reps_list)
+        weight_sequence = " ".join(f"{w:.2f}" for w in weights_list)
+        primary_weight = max(weights_list)
+        return await save_current_exercise(update, context, primary_weight, weight_sequence)
+
+    await query.edit_message_text("Unknown action. Use /workout.")
+    return ConversationHandler.END
 
 
 async def save_current_exercise(
@@ -908,46 +1104,16 @@ async def save_current_exercise(
     workout.pop("sets", None)
     workout.pop("reps", None)
     workout.pop("reps_sequence", None)
+    workout.pop("sets_target", None)
+    workout.pop("reps_list", None)
+    workout.pop("weights_list", None)
+    workout.pop("current_weight", None)
 
     await update.effective_message.reply_text(
         f"Saved: {saved_name} | volume {volume:.2f}\nWhat next?",
         reply_markup=post_exercise_keyboard(),
     )
     return POST_ACTION
-
-
-async def exercise_weight_msg(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    workout = context.user_data.get("workout")
-    if not workout:
-        await update.effective_message.reply_text("No active session. Use /workout.")
-        return ConversationHandler.END
-
-    weights = parse_weight_sequence(update.effective_message.text or "")
-    if weights is None:
-        await update.effective_message.reply_text(
-            "Please enter valid weights, e.g. 60 57.5 55 or 60"
-        )
-        return EX_WEIGHT
-
-    set_count = int(workout.get("sets", 0))
-    if set_count <= 0:
-        await update.effective_message.reply_text("Session data was incomplete. Use /workout to restart.")
-        context.user_data.pop("workout", None)
-        return ConversationHandler.END
-
-    if len(weights) == 1 and set_count > 1:
-        weights = [weights[0]] * set_count
-
-    if len(weights) != set_count:
-        await update.effective_message.reply_text(
-            f"You entered {len(weights)} weights but reps has {set_count} sets. "
-            "Send one weight for all sets or one per set."
-        )
-        return EX_WEIGHT
-
-    weight_sequence = " ".join(f"{w:.2f}" for w in weights)
-    primary_weight = max(weights)
-    return await save_current_exercise(update, context, primary_weight, weight_sequence)
 
 
 async def post_action_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -1274,13 +1440,23 @@ def build_application() -> Application:
                     pattern=r"^(ex:\d+|finish_session)$",
                 ),
             ],
+            EX_SETS: [
+                CallbackQueryHandler(
+                    sets_choice_cb,
+                    pattern=r"^(sets:[1-6]|finish_session)$",
+                ),
+            ],
             EX_REPS: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, exercise_reps_msg),
-                CallbackQueryHandler(finish_workout, pattern=r"^finish_session$"),
+                CallbackQueryHandler(
+                    reps_choice_cb,
+                    pattern=r"^(rep:(?:[1-9]|1[0-9]|20)|finish_session)$",
+                ),
             ],
             EX_WEIGHT: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, exercise_weight_msg),
-                CallbackQueryHandler(finish_workout, pattern=r"^finish_session$"),
+                CallbackQueryHandler(
+                    weight_choice_cb,
+                    pattern=r"^(wadj:[+-]?(?:\d+(?:\.\d+)?)|wconfirm|wcopy|finish_session)$",
+                ),
             ],
             POST_ACTION: [
                 CallbackQueryHandler(
