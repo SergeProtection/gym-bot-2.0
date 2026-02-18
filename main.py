@@ -34,6 +34,16 @@ ROTATION = ["Chest", "Back", "Shoulders", "Legs"]
 MUSCLE_OPTIONS = ["Chest", "Back", "Legs", "Shoulders"]
 EXERCISE_ASSETS_DIR = Path((os.getenv("GYMBOT_EXERCISE_DIR") or "Exercise").strip())
 EXERCISE_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+EXCLUDED_EXERCISE_IMAGE_STEMS = {
+    "chest",
+    "abs",
+    "back",
+    "biceps",
+    "calves",
+    "legs",
+    "shoulders",
+    "triceps",
+}
 EXERCISES_BY_GROUP: Dict[str, List[str]] = {
     "Chest": [
         "Bench Press",
@@ -340,7 +350,7 @@ def load_exercise_catalog(base_dir: Path) -> Dict[str, List[ExerciseOption]]:
                 if not image_path.is_file() or image_path.suffix.lower() not in EXERCISE_IMAGE_SUFFIXES:
                     continue
                 stem_key = normalize_key(image_path.stem)
-                if not stem_key or stem_key == group_key:
+                if not stem_key or stem_key == group_key or stem_key in EXCLUDED_EXERCISE_IMAGE_STEMS:
                     continue
                 options.append((pretty_exercise_name(image_path.stem), image_path))
 
