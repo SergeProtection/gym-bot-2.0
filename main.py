@@ -33,6 +33,7 @@ logger = logging.getLogger("GymBot")
 ROTATION = ["Chest", "Back", "Shoulders", "Legs"]
 MUSCLE_OPTIONS = ["Chest", "Back", "Legs", "Shoulders"]
 EXERCISE_ASSETS_DIR = Path((os.getenv("GYMBOT_EXERCISE_DIR") or "Exercise").strip())
+BODYWEIGHT_EXERCISE_PDF = EXERCISE_ASSETS_DIR / "Exercises with body weight.pdf"
 EXERCISE_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 EXCLUDED_EXERCISE_IMAGE_STEMS = {
     "chest",
@@ -87,7 +88,7 @@ EXERCISES_BY_GROUP: Dict[str, List[str]] = {
     ],
 }
 
-SELECT_MUSCLE, WARMUP_CHOICE, WARMUP_INPUT, SELECT_EXERCISE, EX_SETS, EX_REPS, EX_WEIGHT, POST_ACTION = range(8)
+SELECT_MUSCLE, BODYWEIGHT_INPUT, WARMUP_CHOICE, WARMUP_INPUT, SELECT_EXERCISE, EX_SETS, EX_REPS, EX_WEIGHT, POST_ACTION = range(9)
 
 CB_GROUP_PREFIX = "group:"
 CB_EX_PREFIX = "ex:"
@@ -103,6 +104,7 @@ CB_REP_PREFIX = "rep:"
 CB_WADJ_PREFIX = "wadj:"
 CB_WCONFIRM = "wconfirm"
 CB_WCOPY = "wcopy"
+CB_WBODY = "wbody"
 CB_BACK_EXERCISE = "back_exercise"
 CB_LANG_PREFIX = "lang:"
 
@@ -166,6 +168,7 @@ TR: Dict[str, Dict[str, str]] = {
         "back_exercise": "Back to exercises",
         "back_exercise_done": "Selection cleared. Pick an exercise again:",
         "use_prev_weight": "Use previous set weight",
+        "use_body_weight": "My bodyweight",
         "confirm_weight": "Confirm weight",
         "closed_unfinished": "Closed a previously unfinished workout session.",
         "choose_muscle": "Choose the muscle group you're training today:\nRecent muscle groups: {recent}",
@@ -173,6 +176,9 @@ TR: Dict[str, Dict[str, str]] = {
         "invalid_selection_restart": "Invalid selection. Use /workout to start again.",
         "unknown_group_restart": "Unknown muscle group. Use /workout to start again.",
         "workout_started": "{group} workout started.",
+        "ask_body_weight": "Enter your bodyweight in kg (example: 72.4):",
+        "invalid_body_weight": "Please enter a valid bodyweight in kg (example: 72.4).",
+        "body_weight_saved": "Bodyweight saved: {body_weight:.2f} kg",
         "did_warmup": "Did you do your warm-up run?",
         "no_active_session": "No active session. Use /workout.",
         "warmup_skipped": "Warm-up skipped.",
@@ -212,8 +218,14 @@ TR: Dict[str, Dict[str, str]] = {
         "no_history": "No workout history found.",
         "history_caption": "Workout history export (CSV)",
         "last_header": "Last 3 completed workouts (UTC):",
-        "last_line": "{idx}. {ended} | {group} | exercises: {exercise_count} | volume: {total_volume:.2f}",
+        "last_line": "{idx}. {ended} | {group} | exercises: {exercise_count} | volume: {total_volume:.2f} | bodyweight: {body_weight} ({delta})",
         "no_last_workouts": "No completed workouts found yet.",
+        "no_body_weight_value": "No bodyweight recorded for this workout.",
+        "body_weight_change_unknown": "not available",
+        "body_weight_change_gain": "gaining +{delta:.2f} kg",
+        "body_weight_change_loss": "losing {delta:.2f} kg",
+        "body_weight_change_same": "no change",
+        "body_weight_change_first": "first record",
         "today_summary": "Today Summary (UTC)\nCompleted workouts: {session_count}\nExercises logged: {exercise_count}\nTotal volume: {total_volume:.2f}\nWarm-up sessions: {warmup_count}\nWarm-up total: {warmup_minutes_total:.2f} min, {warmup_distance_total:.2f} km\nVolume by muscle group:\n{group_lines}",
         "week_summary": "This Week Summary (UTC)\nWeek: {start_date} to {end_date}\nCompleted workouts: {session_count}\nExercises logged: {exercise_count}\nTotal weekly volume: {total_volume:.2f}\nWarm-up sessions: {warmup_count}\nWarm-up total: {warmup_minutes_total:.2f} min, {warmup_distance_total:.2f} km\nWeekly volume by muscle group:\n{group_lines}",
         "no_prs": "No PRs yet. Log a workout with /workout.",
@@ -225,6 +237,7 @@ TR: Dict[str, Dict[str, str]] = {
         "workout_finish_free": "Workout ended.\nExercises saved: {count}\nTotal volume: {volume:.2f}{warmup_line}\nRecent muscle groups: {recent}",
         "workout_finish_empty_free": "Workout ended with no exercises saved.\nRecent muscle groups: {recent}",
         "warmup_line": "\nWarm-up: {minutes:.2f} min, {distance:.2f} km",
+        "body_weight_line": "\nBodyweight: {body_weight} ({delta})",
         "skipped_day": "Skipped day recorded for {skipped}.\nNext scheduled group: {next_group}",
         "reminder_free": "GymBot reminder:\nTime to log your workout.\nRecent muscle groups: {recent}\nUse /workout to log your session.",
     },
@@ -292,6 +305,15 @@ def parse_weight(text: str) -> Optional[float]:
     if value < 0:
         return None
     return float(value)
+
+
+def parse_body_weight(text: str) -> Optional[float]:
+    value = parse_weight(text)
+    if value is None:
+        return None
+    if value < 20 or value > 400:
+        return None
+    return round(value, 2)
 
 
 def parse_warmup_input(text: str) -> Optional[Tuple[float, float]]:
@@ -397,6 +419,7 @@ class GymDB:
                     muscle_group TEXT NOT NULL,
                     started_at TEXT NOT NULL,
                     ended_at TEXT,
+                    body_weight_kg REAL,
                     warmup_done INTEGER NOT NULL DEFAULT 0,
                     warmup_minutes REAL,
                     warmup_distance_km REAL,
@@ -438,6 +461,8 @@ class GymDB:
                 conn.execute("ALTER TABLE users ADD COLUMN language TEXT")
 
             session_cols = {row["name"] for row in conn.execute("PRAGMA table_info(workout_sessions)")}
+            if "body_weight_kg" not in session_cols:
+                conn.execute("ALTER TABLE workout_sessions ADD COLUMN body_weight_kg REAL")
             if "warmup_done" not in session_cols:
                 conn.execute("ALTER TABLE workout_sessions ADD COLUMN warmup_done INTEGER NOT NULL DEFAULT 0")
             if "warmup_minutes" not in session_cols:
@@ -502,13 +527,14 @@ class GymDB:
                     ws.id,
                     ws.muscle_group,
                     ws.ended_at,
+                    ws.body_weight_kg,
                     COUNT(e.id) AS exercise_count,
                     COALESCE(SUM(e.volume), 0) AS total_volume
                 FROM workout_sessions ws
                 LEFT JOIN exercises e ON e.session_id = ws.id
                 WHERE ws.user_id = ?
                   AND ws.status = 'completed'
-                GROUP BY ws.id, ws.muscle_group, ws.ended_at
+                GROUP BY ws.id, ws.muscle_group, ws.ended_at, ws.body_weight_kg
                 ORDER BY ws.ended_at DESC
                 LIMIT ?
                 """,
@@ -586,6 +612,17 @@ class GymDB:
                 WHERE id = ?
                 """,
                 (1 if done else 0, minutes, distance_km, session_id),
+            )
+
+    def set_session_body_weight(self, session_id: int, body_weight_kg: float) -> None:
+        with closing(self.connect()) as conn, conn:
+            conn.execute(
+                """
+                UPDATE workout_sessions
+                SET body_weight_kg = ?
+                WHERE id = ?
+                """,
+                (body_weight_kg, session_id),
             )
 
     def get_session(self, session_id: int) -> Optional[sqlite3.Row]:
@@ -691,7 +728,8 @@ class GymDB:
                     e.session_id,
                     ws.warmup_done,
                     ws.warmup_minutes,
-                    ws.warmup_distance_km
+                    ws.warmup_distance_km,
+                    ws.body_weight_kg
                 FROM exercises e
                 JOIN workout_sessions ws ON ws.id = e.session_id
                 WHERE e.user_id = ?
@@ -881,6 +919,19 @@ def recent_groups_text(db: GymDB, user_id: int, lang: str, limit: int = 3) -> st
     return ", ".join(recent) if recent else tr(lang, "none_yet")
 
 
+def body_weight_change_text(lang: str, current_bw: Optional[float], previous_bw: Optional[float]) -> str:
+    if current_bw is None:
+        return tr(lang, "body_weight_change_unknown")
+    if previous_bw is None:
+        return tr(lang, "body_weight_change_first")
+    delta = round(current_bw - previous_bw, 2)
+    if abs(delta) < 0.01:
+        return tr(lang, "body_weight_change_same")
+    if delta > 0:
+        return tr(lang, "body_weight_change_gain", delta=delta)
+    return tr(lang, "body_weight_change_loss", delta=delta)
+
+
 def welcome_text(context: ContextTypes.DEFAULT_TYPE, user_id: int, lang: str) -> str:
     db = get_db(context)
     return tr(
@@ -1020,7 +1071,12 @@ def reps_keyboard(lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def weight_adjust_keyboard(can_copy_prev: bool, lang: str) -> InlineKeyboardMarkup:
+def weight_adjust_keyboard(
+    can_copy_prev: bool,
+    body_weight_kg: Optional[float],
+    allow_bodyweight_button: bool,
+    lang: str,
+) -> InlineKeyboardMarkup:
     rows = [
         [
             InlineKeyboardButton("-20", callback_data=f"{CB_WADJ_PREFIX}-20"),
@@ -1038,6 +1094,8 @@ def weight_adjust_keyboard(can_copy_prev: bool, lang: str) -> InlineKeyboardMark
     ]
     if can_copy_prev:
         rows.append([InlineKeyboardButton(tr(lang, "use_prev_weight"), callback_data=CB_WCOPY)])
+    if allow_bodyweight_button and body_weight_kg is not None:
+        rows.append([InlineKeyboardButton(tr(lang, "use_body_weight"), callback_data=CB_WBODY)])
     rows.append([InlineKeyboardButton(tr(lang, "confirm_weight"), callback_data=CB_WCONFIRM)])
     rows.append([InlineKeyboardButton(tr(lang, "back_exercise"), callback_data=CB_BACK_EXERCISE)])
     rows.append([InlineKeyboardButton(tr(lang, "end_workout"), callback_data=CB_FINISH_SESSION)])
@@ -1212,10 +1270,10 @@ async def select_muscle_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     await query.edit_message_text(tr(lang, "workout_started", group=group))
     await query.message.reply_text(
-        tr(lang, "did_warmup"),
-        reply_markup=warmup_keyboard(lang),
+        tr(lang, "ask_body_weight"),
+        reply_markup=end_keyboard(lang),
     )
-    return WARMUP_CHOICE
+    return BODYWEIGHT_INPUT
 
 
 async def warmup_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -1252,6 +1310,30 @@ async def warmup_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     await query.edit_message_text(tr(lang, "invalid_option_restart"))
     return ConversationHandler.END
+
+
+async def bodyweight_input_msg(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    workout = context.user_data.get("workout")
+    if not workout:
+        await update.effective_message.reply_text(tr("en", "no_active_session"))
+        return ConversationHandler.END
+
+    lang = user_lang(context, update.effective_user.id)
+    body_weight = parse_body_weight(update.effective_message.text or "")
+    if body_weight is None:
+        await update.effective_message.reply_text(tr(lang, "invalid_body_weight"))
+        return BODYWEIGHT_INPUT
+
+    db = get_db(context)
+    db.set_session_body_weight(int(workout["session_id"]), body_weight)
+    workout["body_weight_kg"] = body_weight
+
+    await update.effective_message.reply_text(tr(lang, "body_weight_saved", body_weight=body_weight))
+    await update.effective_message.reply_text(
+        tr(lang, "did_warmup"),
+        reply_markup=warmup_keyboard(lang),
+    )
+    return WARMUP_CHOICE
 
 
 async def warmup_input_msg(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -1429,7 +1511,12 @@ async def reps_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await query.edit_message_text(tr(lang, "set_reps_selected", set_no=set_no, sets=sets_target, rep=rep))
     await query.message.reply_text(
         weight_prompt_text(set_no, sets_target, current_weight),
-        reply_markup=weight_adjust_keyboard(can_copy_prev=len(prev_weights) > 0, lang=lang),
+        reply_markup=weight_adjust_keyboard(
+            can_copy_prev=len(prev_weights) > 0,
+            body_weight_kg=workout.get("body_weight_kg"),
+            allow_bodyweight_button=bool(context.application.bot_data.get("has_bodyweight_pdf")),
+            lang=lang,
+        ),
     )
     return EX_WEIGHT
 
@@ -1470,7 +1557,12 @@ async def weight_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         workout["current_weight"] = current_weight
         await query.edit_message_text(
             weight_prompt_text(set_no, sets_target, current_weight),
-            reply_markup=weight_adjust_keyboard(can_copy_prev=len(weights_list) > 0, lang=lang),
+            reply_markup=weight_adjust_keyboard(
+                can_copy_prev=len(weights_list) > 0,
+                body_weight_kg=workout.get("body_weight_kg"),
+                allow_bodyweight_button=bool(context.application.bot_data.get("has_bodyweight_pdf")),
+                lang=lang,
+            ),
         )
         return EX_WEIGHT
 
@@ -1482,7 +1574,30 @@ async def weight_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         workout["current_weight"] = current_weight
         await query.edit_message_text(
             weight_prompt_text(set_no, sets_target, current_weight),
-            reply_markup=weight_adjust_keyboard(can_copy_prev=True, lang=lang),
+            reply_markup=weight_adjust_keyboard(
+                can_copy_prev=True,
+                body_weight_kg=workout.get("body_weight_kg"),
+                allow_bodyweight_button=bool(context.application.bot_data.get("has_bodyweight_pdf")),
+                lang=lang,
+            ),
+        )
+        return EX_WEIGHT
+
+    if data == CB_WBODY:
+        body_weight = workout.get("body_weight_kg")
+        if body_weight is None:
+            await query.answer(tr(lang, "no_body_weight_value"), show_alert=True)
+            return EX_WEIGHT
+        current_weight = clamp_weight_kg(float(body_weight))
+        workout["current_weight"] = current_weight
+        await query.edit_message_text(
+            weight_prompt_text(set_no, sets_target, current_weight),
+            reply_markup=weight_adjust_keyboard(
+                can_copy_prev=len(weights_list) > 0,
+                body_weight_kg=workout.get("body_weight_kg"),
+                allow_bodyweight_button=bool(context.application.bot_data.get("has_bodyweight_pdf")),
+                lang=lang,
+            ),
         )
         return EX_WEIGHT
 
@@ -1649,8 +1764,26 @@ async def finish_workout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if count > 0:
         db.close_session(session_id, "completed")
+        completed_rows = db.get_last_completed_workouts(user_id=user.id, limit=2)
+        body_weight_line = ""
+        if completed_rows:
+            current_bw = (
+                float(completed_rows[0]["body_weight_kg"])
+                if completed_rows[0]["body_weight_kg"] is not None
+                else None
+            )
+            previous_bw = None
+            if len(completed_rows) > 1 and completed_rows[1]["body_weight_kg"] is not None:
+                previous_bw = float(completed_rows[1]["body_weight_kg"])
+            body_weight_line = tr(
+                lang,
+                "body_weight_line",
+                body_weight=(f"{current_bw:.2f} kg" if current_bw is not None else tr(lang, "no_body_weight_value")),
+                delta=body_weight_change_text(lang, current_bw, previous_bw),
+            )
         recent = recent_groups_text(db, user.id, lang)
         text = tr(lang, "workout_finish_free", count=count, volume=total_volume, warmup_line=warmup_line, recent=recent)
+        text += body_weight_line
     else:
         db.close_session(session_id, "cancelled")
         recent = recent_groups_text(db, user.id, lang)
@@ -1686,13 +1819,19 @@ async def last_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     db = get_db(context)
-    rows = db.get_last_completed_workouts(user_id=user_id, limit=3)
+    rows = db.get_last_completed_workouts(user_id=user_id, limit=4)
     if not rows:
         await update.effective_message.reply_text(tr(lang, "no_last_workouts"))
         return
 
     lines = [tr(lang, "last_header")]
-    for idx, row in enumerate(rows, start=1):
+    for idx, row in enumerate(rows[:3], start=1):
+        current_bw = float(row["body_weight_kg"]) if row["body_weight_kg"] is not None else None
+        previous_bw: Optional[float] = None
+        if idx < len(rows):
+            next_row = rows[idx]
+            if next_row["body_weight_kg"] is not None:
+                previous_bw = float(next_row["body_weight_kg"])
         lines.append(
             tr(
                 lang,
@@ -1702,6 +1841,8 @@ async def last_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 group=str(row["muscle_group"]),
                 exercise_count=int(row["exercise_count"] or 0),
                 total_volume=float(row["total_volume"] or 0.0),
+                body_weight=(f"{current_bw:.2f} kg" if current_bw is not None else tr(lang, "no_body_weight_value")),
+                delta=body_weight_change_text(lang, current_bw, previous_bw),
             )
         )
     await update.effective_message.reply_text("\n".join(lines))
@@ -1733,6 +1874,7 @@ async def history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             "reps_sequence",
             "weight_kg",
             "weight_sequence",
+            "body_weight_kg",
             "warmup_done",
             "warmup_minutes",
             "warmup_distance_km",
@@ -1751,6 +1893,7 @@ async def history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 r["reps_sequence"] or "",
                 f"{float(r['weight']):.2f}",
                 r["weight_sequence"] or "",
+                (f"{float(r['body_weight_kg']):.2f}" if r["body_weight_kg"] is not None else ""),
                 int(r["warmup_done"] or 0),
                 f"{float(r['warmup_minutes'] or 0.0):.2f}",
                 f"{float(r['warmup_distance_km'] or 0.0):.2f}",
@@ -1914,12 +2057,15 @@ def build_application() -> Application:
     app = Application.builder().token(token).post_init(on_startup).build()
     app.bot_data["db"] = db
     app.bot_data["exercise_catalog"] = exercise_catalog
+    app.bot_data["has_bodyweight_pdf"] = BODYWEIGHT_EXERCISE_PDF.exists()
 
     loaded_count = sum(len(options) for options in exercise_catalog.values())
     if loaded_count > 0:
         logger.info("Loaded %d exercise options from %s", loaded_count, EXERCISE_ASSETS_DIR)
     else:
         logger.warning("No exercise assets found in %s; using fallback defaults.", EXERCISE_ASSETS_DIR)
+    if app.bot_data["has_bodyweight_pdf"]:
+        logger.info("Bodyweight exercise PDF detected: %s", BODYWEIGHT_EXERCISE_PDF)
 
     workout_conv = ConversationHandler(
         entry_points=[CommandHandler(["workout", "latihan", "tren"], workout_cmd)],
@@ -1929,6 +2075,10 @@ def build_application() -> Application:
                     select_muscle_cb,
                     pattern=r"^(group:.+|end_workout)$",
                 )
+            ],
+            BODYWEIGHT_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, bodyweight_input_msg),
+                CallbackQueryHandler(finish_workout, pattern=r"^finish_session$"),
             ],
             WARMUP_CHOICE: [
                 CallbackQueryHandler(
@@ -1961,7 +2111,7 @@ def build_application() -> Application:
             EX_WEIGHT: [
                 CallbackQueryHandler(
                     weight_choice_cb,
-                    pattern=r"^(wadj:[+-]?(?:\d+(?:\.\d+)?)|wconfirm|wcopy|back_exercise|finish_session)$",
+                    pattern=r"^(wadj:[+-]?(?:\d+(?:\.\d+)?)|wconfirm|wcopy|wbody|back_exercise|finish_session)$",
                 ),
             ],
             POST_ACTION: [
