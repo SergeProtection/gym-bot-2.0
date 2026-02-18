@@ -113,6 +113,7 @@ CB_WCONFIRM = "wconfirm"
 CB_WCOPY = "wcopy"
 CB_WBODY = "wbody"
 CB_BACK_EXERCISE = "back_exercise"
+CB_BACK_GROUPS = "back_groups"
 CB_LANG_PREFIX = "lang:"
 PDF_EXERCISE_TRANSLATIONS: Dict[str, Dict[str, str]] = {"de": {}, "ru": {}}
 
@@ -296,6 +297,7 @@ TR: Dict[str, Dict[str, str]] = {
         "add_another": "Add another exercise",
         "replace_exercise": "Replace exercise",
         "back_exercise": "Back to exercises",
+        "back_groups": "Back to muscle groups",
         "back_exercise_done": "Selection cleared. Pick an exercise again:",
         "use_prev_weight": "Use previous set weight",
         "use_body_weight": "My bodyweight",
@@ -445,6 +447,7 @@ TR: Dict[str, Dict[str, str]] = {
         "add_another": "Weitere Übung",
         "replace_exercise": "Übung ersetzen",
         "back_exercise": "Zurück zur Übungsliste",
+        "back_groups": "Zurück zu Muskelgruppen",
         "back_exercise_done": "Auswahl gelöscht. Übung erneut wählen:",
         "use_prev_weight": "Gewicht vom vorherigen Satz",
         "use_body_weight": "Mein Körpergewicht",
@@ -1490,6 +1493,7 @@ def exercise_keyboard(exercises: List[ExerciseOption], lang: str) -> InlineKeybo
         [InlineKeyboardButton(translate_exercise_name(lang, name), callback_data=f"{CB_EX_PREFIX}{idx}")]
         for idx, (name, _) in enumerate(exercises)
     ]
+    rows.append([InlineKeyboardButton(tr(lang, "back_groups"), callback_data=CB_BACK_GROUPS)])
     rows.append([InlineKeyboardButton(tr(lang, "end_workout"), callback_data=CB_FINISH_SESSION)])
     return InlineKeyboardMarkup(rows)
 
@@ -1864,6 +1868,30 @@ async def select_exercise_cb(update: Update, context: ContextTypes.DEFAULT_TYPE)
     data = query.data or ""
     if data == CB_FINISH_SESSION:
         return await finish_workout(update, context)
+    if data == CB_BACK_GROUPS:
+        clear_pending_exercise_input(workout)
+        muscle_groups = get_muscle_groups(context)
+        recent = recent_groups_text(get_db(context), update.effective_user.id, lang)
+        await query.edit_message_text(
+            tr(lang, "choose_muscle", recent=recent),
+            reply_markup=group_keyboard(muscle_groups, lang),
+        )
+        return SELECT_EXERCISE
+    if data.startswith(CB_GROUP_PREFIX):
+        group = data.split(":", 1)[1]
+        muscle_groups = get_muscle_groups(context)
+        if group not in set(muscle_groups):
+            await query.edit_message_text(tr(lang, "unknown_group_restart"))
+            return ConversationHandler.END
+
+        workout["muscle_group"] = group
+        clear_pending_exercise_input(workout)
+        exercise_options = get_exercise_options(context, group)
+        await query.edit_message_text(
+            tr(lang, "pick_exercise", group=translate_group_name(lang, group)),
+            reply_markup=exercise_keyboard(exercise_options, lang),
+        )
+        return SELECT_EXERCISE
     if not data.startswith(CB_EX_PREFIX):
         await query.edit_message_text(tr(lang, "invalid_exercise_restart"))
         return ConversationHandler.END
@@ -2682,7 +2710,7 @@ def build_application() -> Application:
             SELECT_EXERCISE: [
                 CallbackQueryHandler(
                     select_exercise_cb,
-                    pattern=r"^(ex:\d+|finish_session)$",
+                    pattern=r"^(ex:\d+|group:.+|back_groups|finish_session)$",
                 ),
             ],
             EX_SETS: [
