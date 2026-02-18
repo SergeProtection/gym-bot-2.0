@@ -33,6 +33,7 @@ logger = logging.getLogger("GymBot")
 ROTATION = ["Chest", "Back", "Shoulders", "Legs"]
 MUSCLE_OPTIONS = ["Chest", "Back", "Legs", "Shoulders"]
 EXERCISE_ASSETS_DIR = Path((os.getenv("GYMBOT_EXERCISE_DIR") or "Exercise").strip())
+EXERCISE_LIST_PDF = EXERCISE_ASSETS_DIR / "SimplyFitness_Full_Exercise_List.pdf"
 BODYWEIGHT_EXERCISE_PDF = EXERCISE_ASSETS_DIR / "Exercises with body weight.pdf"
 EXERCISE_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 EXCLUDED_EXERCISE_IMAGE_STEMS = {
@@ -108,11 +109,12 @@ CB_WBODY = "wbody"
 CB_BACK_EXERCISE = "back_exercise"
 CB_LANG_PREFIX = "lang:"
 
-SUPPORTED_LANGS = ("en", "id", "ru")
+SUPPORTED_LANGS = ("en", "id", "ru", "de")
 LANG_LABELS = {
     "en": "English",
     "id": "Bahasa Indonesia",
-    "ru": "Русский",
+    "de": "Deutsch",
+    "ru": "Russian",
 }
 
 LANG_COMMAND_SETS: Dict[str, List[Tuple[str, str]]] = {
@@ -120,6 +122,7 @@ LANG_COMMAND_SETS: Dict[str, List[Tuple[str, str]]] = {
         ("start", "Register and start"),
         ("workout", "Log a workout"),
         ("last", "Last 3 workouts"),
+        ("list", "Exercise guide files"),
         ("history", "Export workout history"),
         ("today", "Today summary"),
         ("thisweek", "This week summary"),
@@ -131,6 +134,7 @@ LANG_COMMAND_SETS: Dict[str, List[Tuple[str, str]]] = {
         ("mulai", "Daftar dan mulai"),
         ("latihan", "Catat latihan"),
         ("terakhir", "3 latihan terakhir"),
+        ("daftar", "File panduan latihan"),
         ("riwayat", "Ekspor riwayat"),
         ("hariini", "Ringkasan hari ini"),
         ("mingguini", "Ringkasan minggu ini"),
@@ -139,25 +143,148 @@ LANG_COMMAND_SETS: Dict[str, List[Tuple[str, str]]] = {
         ("batal", "Batalkan alur saat ini"),
     ],
     "ru": [
-        ("start", "Запуск и регистрация"),
-        ("tren", "Записать тренировку"),
+        ("start", "Zapusk i registraciya"),
+        ("tren", "Zapisat trenirovku"),
         ("poslednie", "Last 3 workouts"),
-        ("istoriya", "Экспорт истории"),
-        ("segodnya", "Итоги за сегодня"),
-        ("nedelya", "Итоги за неделю"),
-        ("rekord", "Личные рекорды"),
-        ("pomosh", "Показать помощь"),
-        ("otmena", "Отменить текущий ввод"),
+        ("spisok", "Faily uprazhneniy"),
+        ("istoriya", "Eksport istorii"),
+        ("segodnya", "Itogi segodnya"),
+        ("nedelya", "Itogi nedeli"),
+        ("rekord", "Lichnye rekordy"),
+        ("pomosh", "Pokazat pomosh"),
+        ("otmena", "Otmenit tekushchiy vvod"),
     ],
+    "de": [
+        ("start", "Start und Registrierung"),
+        ("training", "Workout eintragen"),
+        ("letzte", "Letzte 3 Workouts"),
+        ("liste", "Uebungsdateien"),
+        ("verlauf", "Verlauf exportieren"),
+        ("heute", "Heute Zusammenfassung"),
+        ("woche", "Diese Woche Zusammenfassung"),
+        ("rekorde", "Persoenliche Rekorde"),
+        ("hilfe", "Hilfe anzeigen"),
+        ("abbrechen", "Aktuellen Ablauf abbrechen"),
+    ],
+}
+GROUP_TRANSLATIONS: Dict[str, Dict[str, str]] = {
+    "de": {
+        "Abdominals": "Bauch",
+        "Back": "Ruecken",
+        "Biceps": "Bizeps",
+        "Calves": "Waden",
+        "Chest": "Brust",
+        "Legs": "Beine",
+        "Shoulders": "Schultern",
+        "Triceps": "Trizeps",
+    },
+    "id": {
+        "Abdominals": "Perut",
+        "Back": "Punggung",
+        "Biceps": "Bisep",
+        "Calves": "Betis",
+        "Chest": "Dada",
+        "Legs": "Kaki",
+        "Shoulders": "Bahu",
+        "Triceps": "Trisep",
+    },
+    "ru": {
+        "Abdominals": "Press",
+        "Back": "Spina",
+        "Biceps": "Biceps",
+        "Calves": "Ikry",
+        "Chest": "Grud",
+        "Legs": "Nogi",
+        "Shoulders": "Plechi",
+        "Triceps": "Triceps",
+    },
+}
+
+EXERCISE_TERM_TRANSLATIONS: Dict[str, Dict[str, str]] = {
+    "de": {
+        "Bench Press": "Bankdruecken",
+        "Push Ups": "Liegestuetze",
+        "Push Up": "Liegestuetz",
+        "Pull Up": "Klimmzug",
+        "Pulldown": "Latziehen",
+        "Deadlift": "Kreuzheben",
+        "Leg Press": "Beinpresse",
+        "Leg Extension": "Beinstrecker",
+        "Leg Curl": "Beinbeuger",
+        "Calf Raise": "Wadenheben",
+        "Hip Thrust": "Hueftstoss",
+        "Barbell": "Langhantel",
+        "Dumbbell": "Kurzhantel",
+        "Cable": "Kabel",
+        "Machine": "Maschine",
+        "Bodyweight": "Koerpergewicht",
+        "Seated": "Sitzend",
+        "Standing": "Stehend",
+        "Incline": "Schraeg",
+        "Declined": "Negativ",
+        "Overhead": "Ueberkopf",
+        "One Arm": "Einarmig",
+        "Single Arm": "Einarmig",
+        "Two Handed": "Beidhaendig",
+        "Bent Over": "Vorgebeugt",
+        "Squat": "Kniebeuge",
+        "Lunge": "Ausfallschritt",
+        "Shoulder": "Schulter",
+        "Press": "Druecken",
+        "Row": "Rudern",
+        "Raise": "Anheben",
+        "Crunch": "Crunch",
+        "Plank": "Plank",
+    },
+    "id": {
+        "Barbell": "Barbel",
+        "Dumbbell": "Dumbel",
+        "Cable": "Kabel",
+        "Machine": "Mesin",
+        "Bodyweight": "Berat badan",
+        "Bench Press": "Bench press",
+        "Push Up": "Push up",
+        "Pull Up": "Pull up",
+        "Deadlift": "Deadlift",
+        "Squat": "Squat",
+        "Lunge": "Lunge",
+        "Press": "Tekan",
+        "Row": "Row",
+        "Raise": "Angkat",
+        "Seated": "Duduk",
+        "Standing": "Berdiri",
+        "Incline": "Miring",
+        "Declined": "Menurun",
+    },
+    "ru": {
+        "Barbell": "Ð¨Ñ‚Ð°Ð½Ð³Ð°",
+        "Dumbbell": "Ð“Ð°Ð½Ñ‚ÐµÐ»ÑŒ",
+        "Cable": "Ð‘Ð»Ð¾Ðº",
+        "Machine": "Ð¢Ñ€ÐµÐ½Ð°Ð¶ÐµÑ€",
+        "Bodyweight": "Ð¡Ð¾Ð±ÑÑ‚Ð²ÐµÐ½Ð½Ñ‹Ð¹ Ð²ÐµÑ",
+        "Bench Press": "Ð–Ð¸Ð¼ Ð»ÐµÐ¶Ð°",
+        "Push Up": "ÐžÑ‚Ð¶Ð¸Ð¼Ð°Ð½Ð¸Ðµ",
+        "Pull Up": "ÐŸÐ¾Ð´Ñ‚ÑÐ³Ð¸Ð²Ð°Ð½Ð¸Ðµ",
+        "Deadlift": "Ð¡Ñ‚Ð°Ð½Ð¾Ð²Ð°Ñ Ñ‚ÑÐ³Ð°",
+        "Squat": "ÐŸÑ€Ð¸ÑÐµÐ´Ð°Ð½Ð¸Ðµ",
+        "Lunge": "Ð’Ñ‹Ð¿Ð°Ð´",
+        "Press": "Ð–Ð¸Ð¼",
+        "Row": "Ð¢ÑÐ³Ð°",
+        "Raise": "ÐŸÐ¾Ð´ÑŠÐµÐ¼",
+        "Seated": "Ð¡Ð¸Ð´Ñ",
+        "Standing": "Ð¡Ñ‚Ð¾Ñ",
+        "Incline": "ÐÐ°ÐºÐ»Ð¾Ð½Ð½Ñ‹Ð¹",
+        "Declined": "ÐžÐ±Ñ€Ð°Ñ‚Ð½Ñ‹Ð¹ Ð½Ð°ÐºÐ»Ð¾Ð½",
+    },
 }
 
 TR: Dict[str, Dict[str, str]] = {
     "en": {
         "select_language": "Choose your language:",
         "language_saved": "Language saved.",
-        "welcome": "Welcome to GymBot.\nUse /workout to log a workout session.\nNext in your 4-day rotation: {next_group}\n\nCommands:\n/workout, /last, /history, /today, /thisweek, /pr, /help",
-        "welcome_free_plan": "Welcome to GymBot.\nUse /workout to log a workout session.\nAvailable muscle groups: {groups}\nRecent muscle groups: {recent}\n\nCommands:\n/workout, /last, /history, /today, /thisweek, /pr, /help",
-        "help": "/start - Register and initialize reminders\n/workout - Log a workout\n/last - Last 3 completed workouts\n/history - Export workout history CSV\n/today - Today summary stats\n/thisweek - Weekly volume by muscle group\n/pr - Personal records (max weight by exercise)\n/cancel - Cancel active workout conversation",
+        "welcome": "Welcome to GymBot.\nUse /workout to log a workout session.\nNext in your 4-day rotation: {next_group}\n\nCommands:\n/workout, /last, /list, /history, /today, /thisweek, /pr, /help",
+        "welcome_free_plan": "Welcome to GymBot.\nUse /workout to log a workout session.\nAvailable muscle groups: {groups}\nRecent muscle groups: {recent}\n\nCommands:\n/workout, /last, /list, /history, /today, /thisweek, /pr, /help",
+        "help": "/start - Register and initialize reminders\n/workout - Log a workout\n/last - Last 3 completed workouts\n/list - Download exercise guide files\n/history - Export workout history CSV\n/today - Today summary stats\n/thisweek - Weekly volume by muscle group\n/pr - Personal records (max weight by exercise)\n/cancel - Cancel active workout conversation",
         "none_yet": "None yet",
         "skip_day": "Skip day",
         "end_workout": "End workout",
@@ -207,8 +334,8 @@ TR: Dict[str, Dict[str, str]] = {
         "unknown_action_restart": "Unknown action. Use /workout.",
         "session_incomplete_restart": "Session data was incomplete. Use /workout to restart.",
         "saved_line": "Saved: {name} | volume {volume:.2f}{pr_line}\nWhat next?",
-        "first_pr": "\n🏆 First PR set for {name}: {weight:.2f} kg 💪",
-        "new_pr": "\n🏆 New PR for {name}: {old:.2f} -> {new:.2f} kg 💪",
+        "first_pr": "\nðŸ† First PR set for {name}: {weight:.2f} kg ðŸ’ª",
+        "new_pr": "\nðŸ† New PR for {name}: {old:.2f} -> {new:.2f} kg ðŸ’ª",
         "no_active_workout": "No active workout. Use /workout.",
         "add_next_exercise": "Add the next exercise:",
         "replace_pick": "Last exercise removed. Pick a replacement:",
@@ -217,6 +344,8 @@ TR: Dict[str, Dict[str, str]] = {
         "cancelled": "Workout conversation cancelled.",
         "no_history": "No workout history found.",
         "history_caption": "Workout history export (CSV)",
+        "exercise_list_caption": "Exercise guide: {file_name}",
+        "no_exercise_files": "No exercise guide files found.",
         "last_header": "Last 3 completed workouts (UTC):",
         "last_line": "{idx}. {ended} | {group} | exercises: {exercise_count} | volume: {total_volume:.2f} | bodyweight: {body_weight} ({delta})",
         "no_last_workouts": "No completed workouts found yet.",
@@ -229,8 +358,8 @@ TR: Dict[str, Dict[str, str]] = {
         "today_summary": "Today Summary (UTC)\nCompleted workouts: {session_count}\nExercises logged: {exercise_count}\nTotal volume: {total_volume:.2f}\nWarm-up sessions: {warmup_count}\nWarm-up total: {warmup_minutes_total:.2f} min, {warmup_distance_total:.2f} km\nVolume by muscle group:\n{group_lines}",
         "week_summary": "This Week Summary (UTC)\nWeek: {start_date} to {end_date}\nCompleted workouts: {session_count}\nExercises logged: {exercise_count}\nTotal weekly volume: {total_volume:.2f}\nWarm-up sessions: {warmup_count}\nWarm-up total: {warmup_minutes_total:.2f} min, {warmup_distance_total:.2f} km\nWeekly volume by muscle group:\n{group_lines}",
         "no_prs": "No PRs yet. Log a workout with /workout.",
-        "pr_header": "🏆 Personal Records (max weight by exercise):",
-        "pr_line": "💪 {name}: {weight:.2f} kg",
+        "pr_header": "ðŸ† Personal Records (max weight by exercise):",
+        "pr_line": "ðŸ’ª {name}: {weight:.2f} kg",
         "error_text": "An unexpected error occurred. Please try again.",
         "workout_finish": "Workout ended.\nExercises saved: {count}\nTotal volume: {volume:.2f}{warmup_line}\nNext scheduled group: {next_group}",
         "workout_finish_empty": "Workout ended with no exercises saved.\nNext scheduled group remains: {next_group}",
@@ -244,30 +373,143 @@ TR: Dict[str, Dict[str, str]] = {
     "id": {
         "select_language": "Pilih bahasa Anda:",
         "language_saved": "Bahasa disimpan.",
-        "welcome": "Selamat datang di GymBot.\nGunakan /latihan untuk mencatat latihan.\nGiliran berikutnya dalam rotasi 4 hari: {next_group}\n\nPerintah:\n/latihan, /riwayat, /hariini, /mingguini, /rekor, /bantuan",
-        "help": "/mulai - Daftar dan aktifkan pengingat\n/latihan - Catat latihan\n/terakhir - 3 latihan selesai terakhir\n/riwayat - Ekspor riwayat CSV\n/hariini - Ringkasan hari ini\n/mingguini - Volume mingguan per otot\n/rekor - Rekor pribadi (beban maksimum)\n/batal - Batalkan sesi latihan",
+        "welcome": "Selamat datang di GymBot.\nGunakan /latihan untuk mencatat latihan.\n\nPerintah:\n/latihan, /terakhir, /daftar, /riwayat, /hariini, /mingguini, /rekor, /bantuan",
+        "help": "/mulai - Daftar dan aktifkan pengingat\n/latihan - Catat latihan\n/terakhir - 3 latihan selesai terakhir\n/daftar - Unduh file panduan latihan\n/riwayat - Ekspor riwayat CSV\n/hariini - Ringkasan hari ini\n/mingguini - Volume mingguan per otot\n/rekor - Rekor pribadi (beban maksimum)\n/batal - Batalkan sesi latihan",
         "skip_day": "Lewati hari",
         "end_workout": "Selesai latihan",
         "yes_warmup": "Ya, saya pemanasan lari",
         "no_warmup": "Tanpa pemanasan",
         "add_another": "Tambah latihan lain",
         "replace_exercise": "Ganti latihan",
+        "back_exercise": "Kembali ke daftar latihan",
+        "back_exercise_done": "Pilihan dibersihkan. Pilih latihan lagi:",
         "use_prev_weight": "Pakai beban set sebelumnya",
+        "use_body_weight": "Berat badan saya",
         "confirm_weight": "Konfirmasi beban",
+        "ask_body_weight": "Masukkan berat badan Anda dalam kg (contoh: 72.4):",
+        "invalid_body_weight": "Masukkan berat badan yang valid dalam kg (contoh: 72.4).",
+        "body_weight_saved": "Berat badan tersimpan: {body_weight:.2f} kg",
+        "exercise_list_caption": "Panduan latihan: {file_name}",
+        "no_exercise_files": "File panduan latihan tidak ditemukan.",
+        "no_body_weight_value": "Berat badan belum dicatat untuk latihan ini.",
+        "body_weight_change_unknown": "tidak tersedia",
+        "body_weight_change_gain": "naik +{delta:.2f} kg",
+        "body_weight_change_loss": "turun {delta:.2f} kg",
+        "body_weight_change_same": "tidak berubah",
+        "body_weight_change_first": "catatan pertama",
     },
     "ru": {
-        "select_language": "Выберите язык:",
-        "language_saved": "Язык сохранен.",
-        "welcome": "Добро пожаловать в GymBot.\nИспользуйте /tren для записи тренировки.\nСледующая группа в 4-дневной ротации: {next_group}\n\nКоманды:\n/tren, /istoriya, /segodnya, /nedelya, /rekord, /pomosh",
-        "help": "/start - Регистрация и напоминания\n/tren - Записать тренировку\n/istoriya - Экспорт CSV\n/segodnya - Статистика за сегодня\n/nedelya - Недельный объем по мышцам\n/rekord - Личные рекорды (макс. вес)\n/otmena - Отменить текущую тренировку",
-        "skip_day": "Пропустить день",
-        "end_workout": "Завершить",
-        "yes_warmup": "Да, сделал разминку",
-        "no_warmup": "Без разминки",
-        "add_another": "Добавить упражнение",
-        "replace_exercise": "Заменить упражнение",
-        "use_prev_weight": "Вес предыдущего подхода",
-        "confirm_weight": "Подтвердить вес",
+        "select_language": "Ð’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ ÑÐ·Ñ‹Ðº:",
+        "language_saved": "Ð¯Ð·Ñ‹Ðº ÑÐ¾Ñ…Ñ€Ð°Ð½ÐµÐ½.",
+        "welcome": "Ð”Ð¾Ð±Ñ€Ð¾ Ð¿Ð¾Ð¶Ð°Ð»Ð¾Ð²Ð°Ñ‚ÑŒ Ð² GymBot.\nÐ˜ÑÐ¿Ð¾Ð»ÑŒÐ·ÑƒÐ¹Ñ‚Ðµ /tren Ð´Ð»Ñ Ð·Ð°Ð¿Ð¸ÑÐ¸ Ñ‚Ñ€ÐµÐ½Ð¸Ñ€Ð¾Ð²ÐºÐ¸.\n\nÐšÐ¾Ð¼Ð°Ð½Ð´Ñ‹:\n/tren, /poslednie, /spisok, /istoriya, /segodnya, /nedelya, /rekord, /pomosh",
+        "help": "/start - Ð ÐµÐ³Ð¸ÑÑ‚Ñ€Ð°Ñ†Ð¸Ñ Ð¸ Ð½Ð°Ð¿Ð¾Ð¼Ð¸Ð½Ð°Ð½Ð¸Ñ\n/tren - Ð—Ð°Ð¿Ð¸ÑÐ°Ñ‚ÑŒ Ñ‚Ñ€ÐµÐ½Ð¸Ñ€Ð¾Ð²ÐºÑƒ\n/poslednie - 3 Ð¿Ð¾ÑÐ»ÐµÐ´Ð½Ð¸Ðµ Ñ‚Ñ€ÐµÐ½Ð¸Ñ€Ð¾Ð²ÐºÐ¸\n/spisok - Ð¡ÐºÐ°Ñ‡Ð°Ñ‚ÑŒ Ñ„Ð°Ð¹Ð»Ñ‹ ÑƒÐ¿Ñ€Ð°Ð¶Ð½ÐµÐ½Ð¸Ð¹\n/istoriya - Ð­ÐºÑÐ¿Ð¾Ñ€Ñ‚ CSV\n/segodnya - Ð¡Ñ‚Ð°Ñ‚Ð¸ÑÑ‚Ð¸ÐºÐ° Ð·Ð° ÑÐµÐ³Ð¾Ð´Ð½Ñ\n/nedelya - ÐÐµÐ´ÐµÐ»ÑŒÐ½Ñ‹Ð¹ Ð¾Ð±ÑŠÐµÐ¼ Ð¿Ð¾ Ð¼Ñ‹ÑˆÑ†Ð°Ð¼\n/rekord - Ð›Ð¸Ñ‡Ð½Ñ‹Ðµ Ñ€ÐµÐºÐ¾Ñ€Ð´Ñ‹ (Ð¼Ð°ÐºÑ. Ð²ÐµÑ)\n/otmena - ÐžÑ‚Ð¼ÐµÐ½Ð¸Ñ‚ÑŒ Ñ‚ÐµÐºÑƒÑ‰ÑƒÑŽ Ñ‚Ñ€ÐµÐ½Ð¸Ñ€Ð¾Ð²ÐºÑƒ",
+        "skip_day": "ÐŸÑ€Ð¾Ð¿ÑƒÑÑ‚Ð¸Ñ‚ÑŒ Ð´ÐµÐ½ÑŒ",
+        "end_workout": "Ð—Ð°Ð²ÐµÑ€ÑˆÐ¸Ñ‚ÑŒ",
+        "yes_warmup": "Ð”Ð°, ÑÐ´ÐµÐ»Ð°Ð» Ñ€Ð°Ð·Ð¼Ð¸Ð½ÐºÑƒ",
+        "no_warmup": "Ð‘ÐµÐ· Ñ€Ð°Ð·Ð¼Ð¸Ð½ÐºÐ¸",
+        "add_another": "Ð”Ð¾Ð±Ð°Ð²Ð¸Ñ‚ÑŒ ÑƒÐ¿Ñ€Ð°Ð¶Ð½ÐµÐ½Ð¸Ðµ",
+        "replace_exercise": "Ð—Ð°Ð¼ÐµÐ½Ð¸Ñ‚ÑŒ ÑƒÐ¿Ñ€Ð°Ð¶Ð½ÐµÐ½Ð¸Ðµ",
+        "back_exercise": "ÐÐ°Ð·Ð°Ð´ Ðº ÑÐ¿Ð¸ÑÐºÑƒ ÑƒÐ¿Ñ€Ð°Ð¶Ð½ÐµÐ½Ð¸Ð¹",
+        "back_exercise_done": "Ð’Ñ‹Ð±Ð¾Ñ€ Ð¾Ñ‡Ð¸Ñ‰ÐµÐ½. Ð¡Ð½Ð¾Ð²Ð° Ð²Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ ÑƒÐ¿Ñ€Ð°Ð¶Ð½ÐµÐ½Ð¸Ðµ:",
+        "use_prev_weight": "Ð’ÐµÑ Ð¿Ñ€ÐµÐ´Ñ‹Ð´ÑƒÑ‰ÐµÐ³Ð¾ Ð¿Ð¾Ð´Ñ…Ð¾Ð´Ð°",
+        "use_body_weight": "ÐœÐ¾Ð¹ Ð²ÐµÑ Ñ‚ÐµÐ»Ð°",
+        "confirm_weight": "ÐŸÐ¾Ð´Ñ‚Ð²ÐµÑ€Ð´Ð¸Ñ‚ÑŒ Ð²ÐµÑ",
+        "ask_body_weight": "Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ð²Ð°Ñˆ Ð²ÐµÑ Ñ‚ÐµÐ»Ð° Ð² ÐºÐ³ (Ð¿Ñ€Ð¸Ð¼ÐµÑ€: 72.4):",
+        "invalid_body_weight": "Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ ÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ð¹ Ð²ÐµÑ Ñ‚ÐµÐ»Ð° Ð² ÐºÐ³ (Ð½Ð°Ð¿Ñ€Ð¸Ð¼ÐµÑ€: 72.4).",
+        "body_weight_saved": "Ð’ÐµÑ Ñ‚ÐµÐ»Ð° ÑÐ¾Ñ…Ñ€Ð°Ð½ÐµÐ½: {body_weight:.2f} ÐºÐ³",
+        "exercise_list_caption": "Ð¤Ð°Ð¹Ð» ÑƒÐ¿Ñ€Ð°Ð¶Ð½ÐµÐ½Ð¸Ð¹: {file_name}",
+        "no_exercise_files": "Ð¤Ð°Ð¹Ð»Ñ‹ ÑƒÐ¿Ñ€Ð°Ð¶Ð½ÐµÐ½Ð¸Ð¹ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½Ñ‹.",
+        "no_body_weight_value": "Ð’ÐµÑ Ñ‚ÐµÐ»Ð° Ð´Ð»Ñ ÑÑ‚Ð¾Ð¹ Ñ‚Ñ€ÐµÐ½Ð¸Ñ€Ð¾Ð²ÐºÐ¸ Ð½Ðµ ÑƒÐºÐ°Ð·Ð°Ð½.",
+        "body_weight_change_unknown": "Ð½ÐµÑ‚ Ð´Ð°Ð½Ð½Ñ‹Ñ…",
+        "body_weight_change_gain": "Ð½Ð°Ð±Ð¾Ñ€ +{delta:.2f} ÐºÐ³",
+        "body_weight_change_loss": "ÑÐ½Ð¸Ð¶ÐµÐ½Ð¸Ðµ {delta:.2f} ÐºÐ³",
+        "body_weight_change_same": "Ð±ÐµÐ· Ð¸Ð·Ð¼ÐµÐ½ÐµÐ½Ð¸Ð¹",
+        "body_weight_change_first": "Ð¿ÐµÑ€Ð²Ð°Ñ Ð·Ð°Ð¿Ð¸ÑÑŒ",
+    },
+    "de": {
+        "select_language": "Waehle deine Sprache:",
+        "language_saved": "Sprache gespeichert.",
+        "welcome_free_plan": "Willkommen bei GymBot.\nNutze /training fuer dein Workout.\nVerfuegbare Muskelgruppen: {groups}\nZuletzt trainiert: {recent}\n\nBefehle:\n/training, /letzte, /liste, /verlauf, /heute, /woche, /rekorde, /hilfe",
+        "help": "/start - Registrierung und Erinnerungen\n/training - Workout protokollieren\n/letzte - Letzte 3 abgeschlossene Workouts\n/liste - Uebungsdateien herunterladen\n/verlauf - Verlauf als CSV exportieren\n/heute - Tageszusammenfassung\n/woche - Wochenzusammenfassung\n/rekorde - Persoenliche Rekorde\n/abbrechen - Aktuellen Ablauf abbrechen",
+        "none_yet": "Noch keine",
+        "end_workout": "Training beenden",
+        "yes_warmup": "Ja, Warm-up Lauf gemacht",
+        "no_warmup": "Kein Warm-up",
+        "add_another": "Weitere Uebung",
+        "replace_exercise": "Uebung ersetzen",
+        "back_exercise": "Zurueck zur Uebungsliste",
+        "back_exercise_done": "Auswahl geloescht. Uebung erneut waehlen:",
+        "use_prev_weight": "Gewicht vom vorherigen Satz",
+        "use_body_weight": "Mein Koerpergewicht",
+        "confirm_weight": "Gewicht bestaetigen",
+        "closed_unfinished": "Vorherige unvollstaendige Workout-Session wurde geschlossen.",
+        "choose_muscle": "Waehle die Muskelgruppe fuer heute:\nZuletzt trainiert: {recent}",
+        "workout_ended": "Training beendet.",
+        "invalid_selection_restart": "Ungueltige Auswahl. Nutze /training fuer einen Neustart.",
+        "unknown_group_restart": "Unbekannte Muskelgruppe. Nutze /training fuer einen Neustart.",
+        "workout_started": "{group} Training gestartet.",
+        "ask_body_weight": "Gib dein Koerpergewicht in kg ein (Beispiel: 72.4):",
+        "invalid_body_weight": "Bitte gib ein gueltiges Koerpergewicht in kg ein (z. B. 72.4).",
+        "body_weight_saved": "Koerpergewicht gespeichert: {body_weight:.2f} kg",
+        "did_warmup": "Hast du dein Warm-up Lauf gemacht?",
+        "no_active_session": "Keine aktive Session. Nutze /training.",
+        "warmup_skipped": "Warm-up uebersprungen.",
+        "pick_exercise": "Waehle eine Uebung fuer {group}:",
+        "send_warmup": "Sende Warm-up als: minuten distanz_km\nBeispiel: 5 1",
+        "invalid_option_restart": "Ungueltige Option. Nutze /training fuer einen Neustart.",
+        "warmup_format_error": "Bitte sende Warm-up im Format: 5 1 (minuten distanz_km)",
+        "warmup_saved": "Warm-up gespeichert: {minutes:.2f} min, {distance:.2f} km.",
+        "invalid_exercise_restart": "Ungueltige Uebungsauswahl. Nutze /training fuer einen Neustart.",
+        "exercise_not_found": "Uebung nicht gefunden. Nutze /training fuer einen Neustart.",
+        "exercise_selected": "Uebung ausgewaehlt: {exercise}",
+        "choose_sets": "Waehle die Anzahl der Saetze (1-6):",
+        "invalid_sets_restart": "Ungueltige Satzanzahl. Nutze /training fuer einen Neustart.",
+        "sets_range": "Saetze muessen zwischen 1 und 6 liegen.",
+        "sets_selected": "Saetze ausgewaehlt: {sets}",
+        "choose_reps": "Satz {set_no}/{sets}: Waehle Wiederholungen (1-20)",
+        "invalid_reps_restart": "Ungueltige Wiederholungen. Nutze /training fuer einen Neustart.",
+        "reps_range": "Wiederholungen muessen zwischen 1 und 20 liegen.",
+        "sets_missing_restart": "Saetze fehlen. Nutze /training fuer einen Neustart.",
+        "all_sets_entered_restart": "Alle Saetze wurden bereits erfasst. Nutze /training fuer einen Neustart.",
+        "set_reps_selected": "Satz {set_no}/{sets} Wiederholungen gespeichert: {rep}",
+        "set_context_missing": "Satzkontext fehlt. Nutze /training fuer einen Neustart.",
+        "invalid_weight_adjustment": "Ungueltige Gewichtsanpassung.",
+        "no_prev_weight": "Noch kein vorheriges Satzgewicht vorhanden.",
+        "set_weight_saved": "Satz {set_no}/{sets} Gewicht gespeichert: {weight:.2f} kg",
+        "unknown_action_restart": "Unbekannte Aktion. Nutze /training.",
+        "session_incomplete_restart": "Sessiondaten unvollstaendig. Nutze /training fuer einen Neustart.",
+        "saved_line": "Gespeichert: {name} | Volumen {volume:.2f}{pr_line}\nWas als naechstes?",
+        "first_pr": "\nFirst PR fuer {name}: {weight:.2f} kg",
+        "new_pr": "\nNeuer PR fuer {name}: {old:.2f} -> {new:.2f} kg",
+        "no_active_workout": "Kein aktives Workout. Nutze /training.",
+        "add_next_exercise": "Naechste Uebung waehlen:",
+        "replace_pick": "Letzte Uebung entfernt. Waehle eine Ersatzuebung:",
+        "replace_not_found": "Die letzte Uebung konnte nicht ersetzt werden.",
+        "replace_none": "Noch keine gespeicherte Uebung zum Ersetzen.",
+        "cancelled": "Workout-Ablauf abgebrochen.",
+        "no_history": "Kein Workout-Verlauf gefunden.",
+        "history_caption": "Workout-Verlauf Export (CSV)",
+        "exercise_list_caption": "Uebungsdatei: {file_name}",
+        "no_exercise_files": "Keine Uebungsdateien gefunden.",
+        "last_header": "Letzte 3 abgeschlossene Workouts (UTC):",
+        "last_line": "{idx}. {ended} | {group} | Uebungen: {exercise_count} | Volumen: {total_volume:.2f} | Koerpergewicht: {body_weight} ({delta})",
+        "no_last_workouts": "Noch keine abgeschlossenen Workouts.",
+        "no_body_weight_value": "Kein Koerpergewicht fuer dieses Workout gespeichert.",
+        "body_weight_change_unknown": "nicht verfuegbar",
+        "body_weight_change_gain": "zunahme +{delta:.2f} kg",
+        "body_weight_change_loss": "abnahme {delta:.2f} kg",
+        "body_weight_change_same": "keine Veraenderung",
+        "body_weight_change_first": "erster Eintrag",
+        "today_summary": "Heute Zusammenfassung (UTC)\nAbgeschlossene Workouts: {session_count}\nProtokollierte Uebungen: {exercise_count}\nGesamtvolumen: {total_volume:.2f}\nWarm-up Sessions: {warmup_count}\nWarm-up Gesamt: {warmup_minutes_total:.2f} min, {warmup_distance_total:.2f} km\nVolumen nach Muskelgruppe:\n{group_lines}",
+        "week_summary": "Diese Woche Zusammenfassung (UTC)\nWoche: {start_date} bis {end_date}\nAbgeschlossene Workouts: {session_count}\nProtokollierte Uebungen: {exercise_count}\nWochenvolumen gesamt: {total_volume:.2f}\nWarm-up Sessions: {warmup_count}\nWarm-up Gesamt: {warmup_minutes_total:.2f} min, {warmup_distance_total:.2f} km\nWochenvolumen nach Muskelgruppe:\n{group_lines}",
+        "no_prs": "Noch keine PRs. Starte ein Workout mit /training.",
+        "pr_header": "Persoenliche Rekorde (max. Gewicht pro Uebung):",
+        "pr_line": "{name}: {weight:.2f} kg",
+        "workout_finish_free": "Training beendet.\nGespeicherte Uebungen: {count}\nGesamtvolumen: {volume:.2f}{warmup_line}\nZuletzt trainiert: {recent}",
+        "workout_finish_empty_free": "Training beendet ohne gespeicherte Uebungen.\nZuletzt trainiert: {recent}",
+        "warmup_line": "\nWarm-up: {minutes:.2f} min, {distance:.2f} km",
+        "body_weight_line": "\nKoerpergewicht: {body_weight} ({delta})",
+        "reminder_free": "GymBot Erinnerung:\nZeit fuer dein Training.\nZuletzt trainiert: {recent}\nNutze /training fuer dein Workout.",
     },
 }
 
@@ -348,6 +590,26 @@ def normalize_key(value: str) -> str:
 def pretty_exercise_name(stem: str) -> str:
     cleaned = stem.replace("_", " ").replace("-", " ")
     return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def translate_group_name(lang: str, group_name: str) -> str:
+    return GROUP_TRANSLATIONS.get(lang, {}).get(group_name, group_name)
+
+
+def translate_exercise_name(lang: str, exercise_name: str) -> str:
+    term_map = EXERCISE_TERM_TRANSLATIONS.get(lang)
+    if not term_map:
+        return exercise_name
+
+    translated = exercise_name
+    for source in sorted(term_map.keys(), key=len, reverse=True):
+        translated = re.sub(
+            rf"\b{re.escape(source)}\b",
+            term_map[source],
+            translated,
+            flags=re.IGNORECASE,
+        )
+    return re.sub(r"\s+", " ", translated).strip()
 
 
 def canonical_group_name(raw_name: str) -> str:
@@ -896,6 +1158,7 @@ def language_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(LANG_LABELS["en"], callback_data=f"{CB_LANG_PREFIX}en")],
             [InlineKeyboardButton(LANG_LABELS["id"], callback_data=f"{CB_LANG_PREFIX}id")],
             [InlineKeyboardButton(LANG_LABELS["ru"], callback_data=f"{CB_LANG_PREFIX}ru")],
+            [InlineKeyboardButton(LANG_LABELS["de"], callback_data=f"{CB_LANG_PREFIX}de")],
         ]
     )
 
@@ -916,7 +1179,9 @@ def get_muscle_groups(context: ContextTypes.DEFAULT_TYPE) -> List[str]:
 
 def recent_groups_text(db: GymDB, user_id: int, lang: str, limit: int = 3) -> str:
     recent = db.get_recent_trained_groups(user_id, limit=limit)
-    return ", ".join(recent) if recent else tr(lang, "none_yet")
+    if not recent:
+        return tr(lang, "none_yet")
+    return ", ".join(translate_group_name(lang, group) for group in recent)
 
 
 def body_weight_change_text(lang: str, current_bw: Optional[float], previous_bw: Optional[float]) -> str:
@@ -934,10 +1199,11 @@ def body_weight_change_text(lang: str, current_bw: Optional[float], previous_bw:
 
 def welcome_text(context: ContextTypes.DEFAULT_TYPE, user_id: int, lang: str) -> str:
     db = get_db(context)
+    groups_display = ", ".join(translate_group_name(lang, group) for group in get_muscle_groups(context))
     return tr(
         lang,
         "welcome_free_plan",
-        groups=", ".join(get_muscle_groups(context)),
+        groups=groups_display,
         recent=recent_groups_text(db, user_id, lang),
     )
 
@@ -970,7 +1236,7 @@ async def set_chat_commands_for_language(bot, chat_id: int, lang: str) -> None:
 def group_keyboard(muscle_groups: List[str], lang: str) -> InlineKeyboardMarkup:
     rows = []
     for group in muscle_groups:
-        rows.append([InlineKeyboardButton(group, callback_data=f"{CB_GROUP_PREFIX}{group}")])
+        rows.append([InlineKeyboardButton(translate_group_name(lang, group), callback_data=f"{CB_GROUP_PREFIX}{group}")])
     rows.append([InlineKeyboardButton(tr(lang, "end_workout"), callback_data=CB_END_WORKOUT)])
     return InlineKeyboardMarkup(rows)
 
@@ -1012,7 +1278,7 @@ async def back_to_exercise_list(update: Update, context: ContextTypes.DEFAULT_TY
     exercise_options = get_exercise_options(context, group)
     await query.edit_message_text(tr(lang, "back_exercise_done"))
     await query.message.reply_text(
-        tr(lang, "pick_exercise", group=group),
+        tr(lang, "pick_exercise", group=translate_group_name(lang, group)),
         reply_markup=exercise_keyboard(exercise_options, lang),
     )
     return SELECT_EXERCISE
@@ -1020,7 +1286,7 @@ async def back_to_exercise_list(update: Update, context: ContextTypes.DEFAULT_TY
 
 def exercise_keyboard(exercises: List[ExerciseOption], lang: str) -> InlineKeyboardMarkup:
     rows = [
-        [InlineKeyboardButton(name, callback_data=f"{CB_EX_PREFIX}{idx}")]
+        [InlineKeyboardButton(translate_exercise_name(lang, name), callback_data=f"{CB_EX_PREFIX}{idx}")]
         for idx, (name, _) in enumerate(exercises)
     ]
     rows.append([InlineKeyboardButton(tr(lang, "end_workout"), callback_data=CB_FINISH_SESSION)])
@@ -1268,7 +1534,7 @@ async def select_muscle_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         "last_exercise_id": None,
     }
 
-    await query.edit_message_text(tr(lang, "workout_started", group=group))
+    await query.edit_message_text(tr(lang, "workout_started", group=translate_group_name(lang, group)))
     await query.message.reply_text(
         tr(lang, "ask_body_weight"),
         reply_markup=end_keyboard(lang),
@@ -1299,7 +1565,7 @@ async def warmup_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         exercise_options = get_exercise_options(context, group)
         await query.edit_message_text(tr(lang, "warmup_skipped"))
         await query.message.reply_text(
-            tr(lang, "pick_exercise", group=group),
+            tr(lang, "pick_exercise", group=translate_group_name(lang, group)),
             reply_markup=exercise_keyboard(exercise_options, lang),
         )
         return SELECT_EXERCISE
@@ -1356,7 +1622,7 @@ async def warmup_input_msg(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     exercise_options = get_exercise_options(context, group)
     await update.effective_message.reply_text(tr(lang, "warmup_saved", minutes=minutes, distance=distance))
     await update.effective_message.reply_text(
-        tr(lang, "pick_exercise", group=group),
+        tr(lang, "pick_exercise", group=translate_group_name(lang, group)),
         reply_markup=exercise_keyboard(exercise_options, lang),
     )
     return SELECT_EXERCISE
@@ -1393,17 +1659,18 @@ async def select_exercise_cb(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     exercise_name, image_path = exercise_options[ex_index]
     workout["exercise_name"] = exercise_name
+    display_name = translate_exercise_name(lang, exercise_name)
     workout.pop("sets_target", None)
     workout.pop("reps_list", None)
     workout.pop("weights_list", None)
     workout.pop("current_weight", None)
-    await query.edit_message_text(tr(lang, "exercise_selected", exercise=exercise_name))
+    await query.edit_message_text(tr(lang, "exercise_selected", exercise=display_name))
     if image_path and query.message:
         try:
             with image_path.open("rb") as image_file:
                 await query.message.reply_photo(
                     photo=InputFile(image_file, filename=image_path.name),
-                    caption=exercise_name,
+                    caption=display_name,
                 )
         except Exception:
             logger.exception("Failed to send exercise image: %s", image_path)
@@ -1663,6 +1930,7 @@ async def save_current_exercise(
     )
     workout["last_exercise_id"] = ex_id
     saved_name = str(workout["exercise_name"])
+    display_saved_name = translate_exercise_name(lang, saved_name)
 
     workout.pop("exercise_name", None)
     workout.pop("sets", None)
@@ -1675,12 +1943,12 @@ async def save_current_exercise(
 
     pr_line = ""
     if previous_pr is None:
-        pr_line = tr(lang, "first_pr", name=saved_name, weight=primary_weight)
+        pr_line = tr(lang, "first_pr", name=display_saved_name, weight=primary_weight)
     elif float(primary_weight) > float(previous_pr):
-        pr_line = tr(lang, "new_pr", name=saved_name, old=previous_pr, new=primary_weight)
+        pr_line = tr(lang, "new_pr", name=display_saved_name, old=previous_pr, new=primary_weight)
 
     await update.effective_message.reply_text(
-        tr(lang, "saved_line", name=saved_name, volume=volume, pr_line=pr_line),
+        tr(lang, "saved_line", name=display_saved_name, volume=volume, pr_line=pr_line),
         reply_markup=post_exercise_keyboard(lang),
     )
     return POST_ACTION
@@ -1705,7 +1973,7 @@ async def post_action_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         exercise_options = get_exercise_options(context, group)
         await query.edit_message_text(tr(lang, "add_next_exercise"))
         await query.message.reply_text(
-            tr(lang, "pick_exercise", group=group),
+            tr(lang, "pick_exercise", group=translate_group_name(lang, group)),
             reply_markup=exercise_keyboard(exercise_options, lang),
         )
         return SELECT_EXERCISE
@@ -1726,7 +1994,7 @@ async def post_action_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         exercise_options = get_exercise_options(context, group)
         await query.edit_message_text(tr(lang, "replace_pick"))
         await query.message.reply_text(
-            tr(lang, "pick_exercise", group=group),
+            tr(lang, "pick_exercise", group=translate_group_name(lang, group)),
             reply_markup=exercise_keyboard(exercise_options, lang),
         )
         return SELECT_EXERCISE
@@ -1838,7 +2106,7 @@ async def last_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 "last_line",
                 idx=idx,
                 ended=format_iso_utc(str(row["ended_at"] or "")),
-                group=str(row["muscle_group"]),
+                group=translate_group_name(lang, str(row["muscle_group"])),
                 exercise_count=int(row["exercise_count"] or 0),
                 total_volume=float(row["total_volume"] or 0.0),
                 body_weight=(f"{current_bw:.2f} kg" if current_bw is not None else tr(lang, "no_body_weight_value")),
@@ -1846,6 +2114,28 @@ async def last_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             )
         )
     await update.effective_message.reply_text("\n".join(lines))
+
+
+async def exlist_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = ensure_registered(update, context)
+    if user_id is None:
+        return
+    lang = await ensure_language_selected(update, context, user_id)
+    if not lang:
+        return
+
+    files = [EXERCISE_LIST_PDF, BODYWEIGHT_EXERCISE_PDF]
+    existing_files = [p for p in files if p.exists() and p.is_file()]
+    if not existing_files:
+        await update.effective_message.reply_text(tr(lang, "no_exercise_files"))
+        return
+
+    for file_path in existing_files:
+        with file_path.open("rb") as file_handle:
+            await update.effective_message.reply_document(
+                document=InputFile(file_handle, filename=file_path.name),
+                caption=tr(lang, "exercise_list_caption", file_name=file_path.name),
+            )
 
 
 async def history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1910,12 +2200,12 @@ async def history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     )
 
 
-def render_group_volume_lines(group_volumes: Dict[str, float]) -> str:
+def render_group_volume_lines(group_volumes: Dict[str, float], lang: str) -> str:
     if not group_volumes:
         return "-"
     lines = []
     for group in sorted(group_volumes.keys(), key=str.lower):
-        lines.append(f"{group}: {group_volumes.get(group, 0.0):.2f}")
+        lines.append(f"{translate_group_name(lang, group)}: {group_volumes.get(group, 0.0):.2f}")
     return "\n".join(lines)
 
 
@@ -1941,7 +2231,7 @@ async def today_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         warmup_count=summary["warmup_count"],
         warmup_minutes_total=summary["warmup_minutes_total"],
         warmup_distance_total=summary["warmup_distance_total"],
-        group_lines=render_group_volume_lines(summary["group_volumes"]),
+        group_lines=render_group_volume_lines(summary["group_volumes"], lang),
     )
     await update.effective_message.reply_text(text)
 
@@ -1971,7 +2261,7 @@ async def thisweek_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         warmup_count=summary["warmup_count"],
         warmup_minutes_total=summary["warmup_minutes_total"],
         warmup_distance_total=summary["warmup_distance_total"],
-        group_lines=render_group_volume_lines(summary["group_volumes"]),
+        group_lines=render_group_volume_lines(summary["group_volumes"], lang),
     )
     await update.effective_message.reply_text(text)
 
@@ -1992,7 +2282,7 @@ async def pr_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     lines = [tr(lang, "pr_header")]
     for r in records:
-        lines.append(tr(lang, "pr_line", name=r["name"], weight=float(r["max_weight"])))
+        lines.append(tr(lang, "pr_line", name=translate_exercise_name(lang, str(r["name"])), weight=float(r["max_weight"])))
     await update.effective_message.reply_text("\n".join(lines))
 
 
@@ -2068,7 +2358,7 @@ def build_application() -> Application:
         logger.info("Bodyweight exercise PDF detected: %s", BODYWEIGHT_EXERCISE_PDF)
 
     workout_conv = ConversationHandler(
-        entry_points=[CommandHandler(["workout", "latihan", "tren"], workout_cmd)],
+        entry_points=[CommandHandler(["workout", "latihan", "tren", "training"], workout_cmd)],
         states={
             SELECT_MUSCLE: [
                 CallbackQueryHandler(
@@ -2125,15 +2415,16 @@ def build_application() -> Application:
         allow_reentry=True,
     )
 
-    app.add_handler(CallbackQueryHandler(language_select_cb, pattern=r"^lang:(en|id|ru)$"))
+    app.add_handler(CallbackQueryHandler(language_select_cb, pattern=r"^lang:(en|id|ru|de)$"))
     app.add_handler(CommandHandler(["start", "mulai"], start_cmd))
-    app.add_handler(CommandHandler(["help", "bantuan", "pomosh"], help_cmd))
-    app.add_handler(CommandHandler(["last", "terakhir", "poslednie"], last_cmd))
-    app.add_handler(CommandHandler(["history", "riwayat", "istoriya"], history_cmd))
-    app.add_handler(CommandHandler(["today", "hariini", "segodnya"], today_cmd))
-    app.add_handler(CommandHandler(["thisweek", "mingguini", "nedelya"], thisweek_cmd))
-    app.add_handler(CommandHandler(["pr", "rekor", "rekord"], pr_cmd))
-    app.add_handler(CommandHandler(["cancel", "batal", "otmena"], cancel_cmd))
+    app.add_handler(CommandHandler(["help", "bantuan", "pomosh", "hilfe"], help_cmd))
+    app.add_handler(CommandHandler(["last", "terakhir", "poslednie", "letzte"], last_cmd))
+    app.add_handler(CommandHandler(["list", "exlist", "daftar", "spisok", "liste", "uebungen"], exlist_cmd))
+    app.add_handler(CommandHandler(["history", "riwayat", "istoriya", "verlauf"], history_cmd))
+    app.add_handler(CommandHandler(["today", "hariini", "segodnya", "heute"], today_cmd))
+    app.add_handler(CommandHandler(["thisweek", "mingguini", "nedelya", "woche"], thisweek_cmd))
+    app.add_handler(CommandHandler(["pr", "rekor", "rekord", "rekorde"], pr_cmd))
+    app.add_handler(CommandHandler(["cancel", "batal", "otmena", "abbrechen"], cancel_cmd))
     app.add_handler(workout_conv)
 
     app.add_error_handler(error_handler)
@@ -2168,3 +2459,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
