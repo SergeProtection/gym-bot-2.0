@@ -36,6 +36,8 @@ ROTATION = ["Chest", "Back", "Shoulders", "Legs"]
 MUSCLE_OPTIONS = ["Chest", "Back", "Legs", "Shoulders"]
 EXERCISE_ASSETS_DIR = Path((os.getenv("GYMBOT_EXERCISE_DIR") or "Exercise").strip())
 BODYWEIGHT_EXERCISE_PDF = EXERCISE_ASSETS_DIR / "Exercises with body weight.pdf"
+GERMAN_TRANSLATION_PDF = EXERCISE_ASSETS_DIR / "English-German.pdf"
+RUSSIAN_TRANSLATION_PDF = EXERCISE_ASSETS_DIR / "English-Russian.pdf"
 EXERCISE_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 EXCLUDED_EXERCISE_IMAGE_STEMS = {
     "chest",
@@ -102,13 +104,17 @@ CB_FINISH_SESSION = "finish_session"
 CB_WARMUP_YES = "warmup_yes"
 CB_WARMUP_NO = "warmup_no"
 CB_SETS_PREFIX = "sets:"
-CB_REP_PREFIX = "rep:"
+CB_SETS_ADJ_PREFIX = "setsadj:"
+CB_SETS_CONFIRM = "setsconfirm"
+CB_REP_ADJ_PREFIX = "repadj:"
+CB_REP_CONFIRM = "repconfirm"
 CB_WADJ_PREFIX = "wadj:"
 CB_WCONFIRM = "wconfirm"
 CB_WCOPY = "wcopy"
 CB_WBODY = "wbody"
 CB_BACK_EXERCISE = "back_exercise"
 CB_LANG_PREFIX = "lang:"
+PDF_EXERCISE_TRANSLATIONS: Dict[str, Dict[str, str]] = {"de": {}, "ru": {}}
 
 SUPPORTED_LANGS = ("en", "id", "ru", "de")
 LANG_LABELS = {
@@ -315,12 +321,16 @@ TR: Dict[str, Dict[str, str]] = {
         "exercise_not_found": "Exercise not found. Use /workout to restart.",
         "exercise_selected": "Exercise selected: {exercise}",
         "choose_sets": "Choose number of sets (1-6):",
+        "sets_current": "Current sets: {value}",
+        "confirm_sets": "Confirm sets",
         "invalid_sets_restart": "Invalid sets selection. Use /workout to restart.",
         "sets_range": "Sets must be between 1 and 6.",
         "sets_selected": "Sets selected: {sets}",
-        "choose_reps": "Set {set_no}/{sets}: choose reps (1-20)",
+        "choose_reps": "Set {set_no}/{sets}: choose reps (1-100)",
+        "reps_current": "Current reps: {value}",
+        "confirm_reps": "Confirm reps",
         "invalid_reps_restart": "Invalid reps selection. Use /workout to restart.",
-        "reps_range": "Reps must be between 1 and 20.",
+        "reps_range": "Reps must be between 1 and 100.",
         "sets_missing_restart": "Sets are missing. Use /workout to restart.",
         "all_sets_entered_restart": "All sets already entered. Use /workout to restart.",
         "set_reps_selected": "Set {set_no}/{sets} reps selected: {rep}",
@@ -460,12 +470,16 @@ TR: Dict[str, Dict[str, str]] = {
         "exercise_not_found": "Übung nicht gefunden. Nutze /training für einen Neustart.",
         "exercise_selected": "Übung ausgewählt: {exercise}",
         "choose_sets": "Wähle die Anzahl der Sätze (1-6):",
+        "sets_current": "Aktuelle Sätze: {value}",
+        "confirm_sets": "Sätze bestätigen",
         "invalid_sets_restart": "Ungültige Satzanzahl. Nutze /training für einen Neustart.",
         "sets_range": "Sätze müssen zwischen 1 und 6 liegen.",
         "sets_selected": "Sätze ausgewählt: {sets}",
-        "choose_reps": "Satz {set_no}/{sets}: Wähle Wiederholungen (1-20)",
+        "choose_reps": "Satz {set_no}/{sets}: Wähle Wiederholungen (1-100)",
+        "reps_current": "Aktuelle Wiederholungen: {value}",
+        "confirm_reps": "Wiederholungen bestätigen",
         "invalid_reps_restart": "Ungültige Wiederholungen. Nutze /training für einen Neustart.",
-        "reps_range": "Wiederholungen müssen zwischen 1 und 20 liegen.",
+        "reps_range": "Wiederholungen müssen zwischen 1 und 100 liegen.",
         "sets_missing_restart": "Sätze fehlen. Nutze /training für einen Neustart.",
         "all_sets_entered_restart": "Alle Sätze wurden bereits erfasst. Nutze /training für einen Neustart.",
         "set_reps_selected": "Satz {set_no}/{sets} Wiederholungen gespeichert: {rep}",
@@ -575,6 +589,14 @@ def clamp_weight_kg(value: float) -> float:
     return round(min(500.0, max(1.0, value)), 2)
 
 
+def clamp_sets(value: int) -> int:
+    return max(1, min(6, value))
+
+
+def clamp_reps(value: int) -> int:
+    return max(1, min(100, value))
+
+
 ExerciseOption = Tuple[str, Optional[Path]]
 
 
@@ -598,7 +620,111 @@ def translate_group_name(lang: str, group_name: str) -> str:
     return GROUP_TRANSLATIONS.get(lang, {}).get(group_name, group_name)
 
 
+def clean_translation_piece(value: str) -> str:
+    value = re.sub(r"\s+", " ", value).strip(" \t|:-")
+    return value.strip()
+
+
+def load_pdf_translation_map(
+    pdf_path: Path,
+    known_exercise_names: Dict[str, str],
+) -> Dict[str, str]:
+    if not pdf_path.exists() or not pdf_path.is_file():
+        return {}
+
+    try:
+        from pypdf import PdfReader  # type: ignore
+    except Exception:
+        logger.warning(
+            "pypdf is not installed; skipping PDF exercise translations from %s",
+            pdf_path.name,
+        )
+        return {}
+
+    try:
+        reader = PdfReader(str(pdf_path))
+    except Exception:
+        logger.exception("Failed to open translation PDF: %s", pdf_path)
+        return {}
+
+    lines: List[str] = []
+    for page in reader.pages:
+        text = page.extract_text() or ""
+        lines.extend(text.splitlines())
+
+    known_keys = set(known_exercise_names.keys())
+    mappings: Dict[str, str] = {}
+    split_patterns = (r"\t+", r"\s{2,}", r"\s+[|;:]\s+", r"\s+[–—-]\s+")
+
+    def try_store_pair(left_raw: str, right_raw: str) -> bool:
+        left = clean_translation_piece(left_raw)
+        right = clean_translation_piece(right_raw)
+        if not left or not right:
+            return False
+        left_key = normalize_key(left)
+        right_key = normalize_key(right)
+        if not left_key or not right_key or left_key == right_key:
+            return False
+        if left_key in known_keys and right_key not in known_keys:
+            mappings[left_key] = right
+            return True
+        if right_key in known_keys and left_key not in known_keys:
+            mappings[right_key] = left
+            return True
+        return False
+
+    cleaned_lines = [clean_translation_piece(line) for line in lines if clean_translation_piece(line)]
+    for line in cleaned_lines:
+        low = line.lower()
+        if "english" in low and ("german" in low or "russian" in low):
+            continue
+
+        for pattern in split_patterns:
+            parts = re.split(pattern, line, maxsplit=1)
+            if len(parts) == 2 and try_store_pair(parts[0], parts[1]):
+                break
+
+    if len(mappings) < 10:
+        for i in range(len(cleaned_lines) - 1):
+            current = cleaned_lines[i]
+            nxt = cleaned_lines[i + 1]
+            curr_key = normalize_key(current)
+            next_key = normalize_key(nxt)
+            if curr_key in known_keys and next_key not in known_keys and nxt:
+                mappings.setdefault(curr_key, nxt)
+
+    logger.info(
+        "Loaded %d exercise translations from %s",
+        len(mappings),
+        pdf_path.name,
+    )
+    return mappings
+
+
+def load_pdf_exercise_translations(
+    base_dir: Path,
+    catalog: Dict[str, List[ExerciseOption]],
+) -> Dict[str, Dict[str, str]]:
+    known: Dict[str, str] = {}
+    for options in catalog.values():
+        for exercise_name, _ in options:
+            key = normalize_key(exercise_name)
+            if key:
+                known[key] = exercise_name
+
+    return {
+        "de": load_pdf_translation_map(base_dir / GERMAN_TRANSLATION_PDF.name, known),
+        "ru": load_pdf_translation_map(base_dir / RUSSIAN_TRANSLATION_PDF.name, known),
+    }
+
+
 def translate_exercise_name(lang: str, exercise_name: str) -> str:
+    from_pdf = PDF_EXERCISE_TRANSLATIONS.get(lang, {})
+    if from_pdf:
+        mapped = from_pdf.get(normalize_key(exercise_name))
+        if mapped:
+            return mapped
+
     term_map = EXERCISE_TERM_TRANSLATIONS.get(lang)
     if not term_map:
         return exercise_name
@@ -1333,6 +1459,8 @@ def clear_pending_exercise_input(workout: Dict[str, object]) -> None:
     workout.pop("exercise_name", None)
     workout.pop("sets", None)
     workout.pop("reps", None)
+    workout.pop("current_sets", None)
+    workout.pop("current_rep", None)
     workout.pop("reps_sequence", None)
     workout.pop("sets_target", None)
     workout.pop("reps_list", None)
@@ -1378,7 +1506,8 @@ def warmup_keyboard(lang: str) -> InlineKeyboardMarkup:
     )
 
 
-def sets_keyboard(lang: str) -> InlineKeyboardMarkup:
+def sets_keyboard(current_sets: int, lang: str) -> InlineKeyboardMarkup:
+    current_sets = clamp_sets(current_sets)
     return InlineKeyboardMarkup(
         [
             [
@@ -1391,22 +1520,36 @@ def sets_keyboard(lang: str) -> InlineKeyboardMarkup:
                 InlineKeyboardButton("5", callback_data=f"{CB_SETS_PREFIX}5"),
                 InlineKeyboardButton("6", callback_data=f"{CB_SETS_PREFIX}6"),
             ],
+            [
+                InlineKeyboardButton("-1", callback_data=f"{CB_SETS_ADJ_PREFIX}-1"),
+                InlineKeyboardButton(tr(lang, "sets_current", value=current_sets), callback_data="noop"),
+                InlineKeyboardButton("+1", callback_data=f"{CB_SETS_ADJ_PREFIX}+1"),
+            ],
+            [InlineKeyboardButton(tr(lang, "confirm_sets"), callback_data=CB_SETS_CONFIRM)],
             [InlineKeyboardButton(tr(lang, "back_exercise"), callback_data=CB_BACK_EXERCISE)],
             [InlineKeyboardButton(tr(lang, "end_workout"), callback_data=CB_FINISH_SESSION)],
         ]
     )
 
 
-def reps_keyboard(lang: str) -> InlineKeyboardMarkup:
-    rows = []
-    for start in (1, 6, 11, 16):
-        row = [
-            InlineKeyboardButton(str(rep), callback_data=f"{CB_REP_PREFIX}{rep}")
-            for rep in range(start, start + 5)
-        ]
-        rows.append(row)
-    rows.append([InlineKeyboardButton(tr(lang, "back_exercise"), callback_data=CB_BACK_EXERCISE)])
-    rows.append([InlineKeyboardButton(tr(lang, "end_workout"), callback_data=CB_FINISH_SESSION)])
+def reps_keyboard(current_rep: int, lang: str) -> InlineKeyboardMarkup:
+    current_rep = clamp_reps(current_rep)
+    rows = [
+        [
+            InlineKeyboardButton("-10", callback_data=f"{CB_REP_ADJ_PREFIX}-10"),
+            InlineKeyboardButton("-5", callback_data=f"{CB_REP_ADJ_PREFIX}-5"),
+            InlineKeyboardButton("-1", callback_data=f"{CB_REP_ADJ_PREFIX}-1"),
+        ],
+        [
+            InlineKeyboardButton("+1", callback_data=f"{CB_REP_ADJ_PREFIX}+1"),
+            InlineKeyboardButton("+5", callback_data=f"{CB_REP_ADJ_PREFIX}+5"),
+            InlineKeyboardButton("+10", callback_data=f"{CB_REP_ADJ_PREFIX}+10"),
+        ],
+        [InlineKeyboardButton(tr(lang, "reps_current", value=current_rep), callback_data="noop")],
+        [InlineKeyboardButton(tr(lang, "confirm_reps"), callback_data=CB_REP_CONFIRM)],
+        [InlineKeyboardButton(tr(lang, "back_exercise"), callback_data=CB_BACK_EXERCISE)],
+        [InlineKeyboardButton(tr(lang, "end_workout"), callback_data=CB_FINISH_SESSION)],
+    ]
     return InlineKeyboardMarkup(rows)
 
 
@@ -1446,6 +1589,13 @@ def weight_prompt_text(set_no: int, total_sets: int, current_weight: float) -> s
         f"Set {set_no}/{total_sets} weight\n"
         f"Current: {current_weight:.2f} kg\n"
         "Adjust with buttons, then tap Confirm weight."
+    )
+
+
+def reps_prompt_text(lang: str, set_no: int, total_sets: int, current_rep: int) -> str:
+    return (
+        f"{tr(lang, 'choose_reps', set_no=set_no, sets=total_sets)}\n"
+        f"{tr(lang, 'reps_current', value=current_rep)}"
     )
 
 
@@ -1733,10 +1883,12 @@ async def select_exercise_cb(update: Update, context: ContextTypes.DEFAULT_TYPE)
     exercise_name, image_path = exercise_options[ex_index]
     workout["exercise_name"] = exercise_name
     display_name = translate_exercise_name(lang, exercise_name)
+    workout["current_sets"] = int(workout.get("sets_target", 3) or 3)
     workout.pop("sets_target", None)
     workout.pop("reps_list", None)
     workout.pop("weights_list", None)
     workout.pop("current_weight", None)
+    workout.pop("current_rep", None)
     await query.edit_message_text(tr(lang, "exercise_selected", exercise=display_name))
     if image_path and query.message:
         try:
@@ -1749,7 +1901,7 @@ async def select_exercise_cb(update: Update, context: ContextTypes.DEFAULT_TYPE)
             logger.exception("Failed to send exercise image: %s", image_path)
     await query.message.reply_text(
         tr(lang, "choose_sets"),
-        reply_markup=sets_keyboard(lang),
+        reply_markup=sets_keyboard(int(workout.get("current_sets", 3)), lang),
     )
     return EX_SETS
 
@@ -1769,13 +1921,35 @@ async def sets_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return await finish_workout(update, context)
     if data == CB_BACK_EXERCISE:
         return await back_to_exercise_list(update, context, lang)
-    if not data.startswith(CB_SETS_PREFIX):
-        await query.edit_message_text(tr(lang, "invalid_sets_restart"))
-        return ConversationHandler.END
+    if data == "noop":
+        return EX_SETS
 
-    try:
-        sets_count = int(data.split(":", 1)[1])
-    except ValueError:
+    current_sets = clamp_sets(int(workout.get("current_sets", 3)))
+
+    if data.startswith(CB_SETS_ADJ_PREFIX):
+        try:
+            delta = int(data.split(":", 1)[1])
+        except ValueError:
+            await query.edit_message_text(tr(lang, "invalid_sets_restart"))
+            return EX_SETS
+
+        current_sets = clamp_sets(current_sets + delta)
+        workout["current_sets"] = current_sets
+        await query.edit_message_text(
+            tr(lang, "choose_sets"),
+            reply_markup=sets_keyboard(current_sets, lang),
+        )
+        return EX_SETS
+
+    if data == CB_SETS_CONFIRM:
+        sets_count = current_sets
+    elif data.startswith(CB_SETS_PREFIX):
+        try:
+            sets_count = int(data.split(":", 1)[1])
+        except ValueError:
+            await query.edit_message_text(tr(lang, "invalid_sets_restart"))
+            return ConversationHandler.END
+    else:
         await query.edit_message_text(tr(lang, "invalid_sets_restart"))
         return ConversationHandler.END
 
@@ -1783,15 +1957,22 @@ async def sets_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await query.edit_message_text(tr(lang, "sets_range"))
         return EX_SETS
 
+    workout["current_sets"] = sets_count
     workout["sets_target"] = sets_count
     workout["reps_list"] = []
     workout["weights_list"] = []
     workout.pop("current_weight", None)
+    workout["current_rep"] = clamp_reps(int(workout.get("current_rep", 10)))
 
     await query.edit_message_text(tr(lang, "sets_selected", sets=sets_count))
     await query.message.reply_text(
-        tr(lang, "choose_reps", set_no=1, sets=sets_count),
-        reply_markup=reps_keyboard(lang),
+        reps_prompt_text(
+            lang,
+            set_no=1,
+            total_sets=sets_count,
+            current_rep=int(workout["current_rep"]),
+        ),
+        reply_markup=reps_keyboard(int(workout["current_rep"]), lang),
     )
     return EX_REPS
 
@@ -1811,17 +1992,46 @@ async def reps_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return await finish_workout(update, context)
     if data == CB_BACK_EXERCISE:
         return await back_to_exercise_list(update, context, lang)
-    if not data.startswith(CB_REP_PREFIX):
+    if data == "noop":
+        return EX_REPS
+
+    current_rep = clamp_reps(int(workout.get("current_rep", 10)))
+
+    if data.startswith(CB_REP_ADJ_PREFIX):
+        try:
+            delta = int(data.split(":", 1)[1])
+        except ValueError:
+            await query.edit_message_text(tr(lang, "invalid_reps_restart"))
+            return EX_REPS
+
+        current_rep = clamp_reps(current_rep + delta)
+        workout["current_rep"] = current_rep
+
+        sets_target = int(workout.get("sets_target", 0))
+        reps_list: List[int] = list(workout.get("reps_list", []))
+        set_no = len(reps_list) + 1
+        if sets_target <= 0:
+            await query.edit_message_text(tr(lang, "sets_missing_restart"))
+            return ConversationHandler.END
+
+        await query.edit_message_text(
+            reps_prompt_text(
+                lang,
+                set_no=set_no,
+                total_sets=sets_target,
+                current_rep=current_rep,
+            ),
+            reply_markup=reps_keyboard(current_rep, lang),
+        )
+        return EX_REPS
+
+    if data != CB_REP_CONFIRM:
         await query.edit_message_text(tr(lang, "invalid_reps_restart"))
         return ConversationHandler.END
 
-    try:
-        rep = int(data.split(":", 1)[1])
-    except ValueError:
-        await query.edit_message_text(tr(lang, "invalid_reps_restart"))
-        return ConversationHandler.END
+    rep = current_rep
 
-    if rep < 1 or rep > 20:
+    if rep < 1 or rep > 100:
         await query.edit_message_text(tr(lang, "reps_range"))
         return EX_REPS
 
@@ -1836,6 +2046,7 @@ async def reps_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     reps_list.append(rep)
     workout["reps_list"] = reps_list
+    workout["current_rep"] = rep
 
     set_no = len(reps_list)
     prev_weights: List[float] = list(workout.get("weights_list", []))
@@ -1950,9 +2161,15 @@ async def weight_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
         if len(weights_list) < sets_target:
             next_set = len(weights_list) + 1
+            workout["current_rep"] = clamp_reps(int(workout.get("current_rep", reps_list[-1] if reps_list else 10)))
             await query.message.reply_text(
-                tr(lang, "choose_reps", set_no=next_set, sets=sets_target),
-                reply_markup=reps_keyboard(lang),
+                reps_prompt_text(
+                    lang,
+                    set_no=next_set,
+                    total_sets=sets_target,
+                    current_rep=int(workout["current_rep"]),
+                ),
+                reply_markup=reps_keyboard(int(workout["current_rep"]), lang),
             )
             return EX_REPS
 
@@ -2008,6 +2225,8 @@ async def save_current_exercise(
     workout.pop("exercise_name", None)
     workout.pop("sets", None)
     workout.pop("reps", None)
+    workout.pop("current_sets", None)
+    workout.pop("current_rep", None)
     workout.pop("reps_sequence", None)
     workout.pop("sets_target", None)
     workout.pop("reps_list", None)
@@ -2418,6 +2637,8 @@ def build_application() -> Application:
     db = GymDB(db_path)
     db.init_schema()
     exercise_catalog = load_exercise_catalog(EXERCISE_ASSETS_DIR)
+    global PDF_EXERCISE_TRANSLATIONS
+    PDF_EXERCISE_TRANSLATIONS = load_pdf_exercise_translations(EXERCISE_ASSETS_DIR, exercise_catalog)
 
     app = Application.builder().token(token).post_init(on_startup).build()
     app.bot_data["db"] = db
@@ -2429,6 +2650,9 @@ def build_application() -> Application:
         logger.info("Loaded %d exercise options from %s", loaded_count, EXERCISE_ASSETS_DIR)
     else:
         logger.warning("No exercise assets found in %s; using fallback defaults.", EXERCISE_ASSETS_DIR)
+    for lang, mappings in PDF_EXERCISE_TRANSLATIONS.items():
+        if mappings:
+            logger.info("Loaded %d PDF exercise translations for language=%s", len(mappings), lang)
     if app.bot_data["has_bodyweight_pdf"]:
         logger.info("Bodyweight exercise PDF detected: %s", BODYWEIGHT_EXERCISE_PDF)
 
@@ -2464,13 +2688,13 @@ def build_application() -> Application:
             EX_SETS: [
                 CallbackQueryHandler(
                     sets_choice_cb,
-                    pattern=r"^(sets:[1-6]|back_exercise|finish_session)$",
+                    pattern=r"^(sets:[1-6]|setsadj:[+-]1|setsconfirm|noop|back_exercise|finish_session)$",
                 ),
             ],
             EX_REPS: [
                 CallbackQueryHandler(
                     reps_choice_cb,
-                    pattern=r"^(rep:(?:[1-9]|1[0-9]|20)|back_exercise|finish_session)$",
+                    pattern=r"^(repadj:[+-](?:1|5|10)|repconfirm|noop|back_exercise|finish_session)$",
                 ),
             ],
             EX_WEIGHT: [
