@@ -1,9 +1,11 @@
 import csv
+import html
 import io
 import logging
 import os
 import re
 import sqlite3
+import zipfile
 from contextlib import closing
 from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -33,7 +35,6 @@ logger = logging.getLogger("GymBot")
 ROTATION = ["Chest", "Back", "Shoulders", "Legs"]
 MUSCLE_OPTIONS = ["Chest", "Back", "Legs", "Shoulders"]
 EXERCISE_ASSETS_DIR = Path((os.getenv("GYMBOT_EXERCISE_DIR") or "Exercise").strip())
-EXERCISE_LIST_PDF = EXERCISE_ASSETS_DIR / "SimplyFitness_Full_Exercise_List.pdf"
 BODYWEIGHT_EXERCISE_PDF = EXERCISE_ASSETS_DIR / "Exercises with body weight.pdf"
 EXERCISE_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 EXCLUDED_EXERCISE_IMAGE_STEMS = {
@@ -592,6 +593,11 @@ def pretty_exercise_name(stem: str) -> str:
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
+def slugify_name(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug or "item"
+
+
 def translate_group_name(lang: str, group_name: str) -> str:
     return GROUP_TRANSLATIONS.get(lang, {}).get(group_name, group_name)
 
@@ -646,6 +652,77 @@ def load_exercise_catalog(base_dir: Path) -> Dict[str, List[ExerciseOption]]:
             catalog[group] = [(name, None) for name in EXERCISES_BY_GROUP.get(group, [])]
 
     return catalog
+
+
+def build_exercise_list_zip(catalog: Dict[str, List[ExerciseOption]]) -> Tuple[Optional[bytes], int]:
+    image_rows: List[Tuple[str, str, Path]] = []
+    for group in sorted(catalog.keys(), key=str.lower):
+        for exercise_name, image_path in catalog.get(group, []):
+            if not image_path:
+                continue
+            if not image_path.exists() or not image_path.is_file():
+                continue
+            if image_path.suffix.lower() not in EXERCISE_IMAGE_SUFFIXES:
+                continue
+            image_rows.append((group, exercise_name, image_path))
+
+    if not image_rows:
+        return None, 0
+
+    html_lines = [
+        "<!doctype html>",
+        "<html lang='en'>",
+        "<head>",
+        "<meta charset='utf-8'/>",
+        "<meta name='viewport' content='width=device-width, initial-scale=1'/>",
+        "<title>Exercise List</title>",
+        "<style>",
+        "body{font-family:Arial,sans-serif;background:#f6f7fb;color:#111;margin:0;padding:20px;}",
+        "h1{margin:0 0 18px 0;}",
+        "h2{margin:24px 0 10px 0;}",
+        ".grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;}",
+        "figure{margin:0;background:#fff;border:1px solid #dde1eb;border-radius:10px;padding:8px;}",
+        "img{width:100%;height:170px;object-fit:contain;background:#fff;border-radius:8px;}",
+        "figcaption{margin-top:8px;font-size:14px;line-height:1.35;word-break:break-word;}",
+        "</style>",
+        "</head>",
+        "<body>",
+        "<h1>Exercise List</h1>",
+        "<p>Generated from local PNG exercise files.</p>",
+    ]
+
+    group_counters: Dict[str, int] = {}
+    current_group: Optional[str] = None
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for group, exercise_name, image_path in image_rows:
+            if group != current_group:
+                if current_group is not None:
+                    html_lines.append("</div></section>")
+                html_lines.append(f"<section><h2>{html.escape(group)}</h2><div class='grid'>")
+                current_group = group
+
+            group_slug = slugify_name(group)
+            group_counters[group_slug] = group_counters.get(group_slug, 0) + 1
+            img_no = group_counters[group_slug]
+            img_slug = slugify_name(exercise_name)
+            ext = image_path.suffix.lower()
+            zip_rel_path = f"images/{group_slug}/{img_no:03d}-{img_slug}{ext}"
+
+            archive.write(image_path, arcname=zip_rel_path)
+            html_lines.append(
+                "<figure>"
+                f"<img src='{html.escape(zip_rel_path)}' alt='{html.escape(exercise_name)}'/>"
+                f"<figcaption>{html.escape(exercise_name)}</figcaption>"
+                "</figure>"
+            )
+
+        if current_group is not None:
+            html_lines.append("</div></section>")
+        html_lines.extend(["</body>", "</html>"])
+        archive.writestr("Exercise_List.html", "\n".join(html_lines))
+
+    return zip_buffer.getvalue(), len(image_rows)
 
 
 class GymDB:
@@ -2124,18 +2201,20 @@ async def exlist_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if not lang:
         return
 
-    files = [EXERCISE_LIST_PDF, BODYWEIGHT_EXERCISE_PDF]
-    existing_files = [p for p in files if p.exists() and p.is_file()]
-    if not existing_files:
+    catalog = context.application.bot_data.get("exercise_catalog", {})
+    if not isinstance(catalog, dict):
+        catalog = {}
+
+    zip_bytes, image_count = build_exercise_list_zip(catalog)
+    if not zip_bytes or image_count <= 0:
         await update.effective_message.reply_text(tr(lang, "no_exercise_files"))
         return
 
-    for file_path in existing_files:
-        with file_path.open("rb") as file_handle:
-            await update.effective_message.reply_document(
-                document=InputFile(file_handle, filename=file_path.name),
-                caption=tr(lang, "exercise_list_caption", file_name=file_path.name),
-            )
+    file_name = "Exercise_List.zip"
+    await update.effective_message.reply_document(
+        document=InputFile(io.BytesIO(zip_bytes), filename=file_name),
+        caption=tr(lang, "exercise_list_caption", file_name=file_name),
+    )
 
 
 async def history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
