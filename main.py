@@ -33,7 +33,8 @@ logging.basicConfig(
 logger = logging.getLogger("GymBot")
 
 ROTATION = ["Chest", "Back", "Shoulders", "Legs"]
-MUSCLE_OPTIONS = ["Chest", "Back", "Legs", "Shoulders"]
+RUNNING_GROUP = "Running"
+MUSCLE_OPTIONS = ["Chest", "Back", "Legs", "Shoulders", RUNNING_GROUP]
 EXERCISE_ASSETS_DIR = Path((os.getenv("GYMBOT_EXERCISE_DIR") or "Exercise").strip())
 BODYWEIGHT_EXERCISE_PDF = EXERCISE_ASSETS_DIR / "Exercises with body weight.pdf"
 GERMAN_TRANSLATION_PDF = EXERCISE_ASSETS_DIR / "English-German.pdf"
@@ -103,6 +104,11 @@ CB_REPLACE_EXERCISE = "replace_exercise"
 CB_FINISH_SESSION = "finish_session"
 CB_WARMUP_YES = "warmup_yes"
 CB_WARMUP_NO = "warmup_no"
+CB_BW_ADJ_PREFIX = "bwadj:"
+CB_BW_CONFIRM = "bwconfirm"
+CB_WMIN_ADJ_PREFIX = "wminadj:"
+CB_WDIST_ADJ_PREFIX = "wdistadj:"
+CB_WARMUP_CONFIRM = "warmup_confirm"
 CB_SETS_PREFIX = "sets:"
 CB_SETS_ADJ_PREFIX = "setsadj:"
 CB_SETS_CONFIRM = "setsconfirm"
@@ -125,6 +131,8 @@ ICON_WEIGHT = "\U0001F7E0"
 ICON_BACK = "\u2B05\uFE0F"
 ICON_STOP = "\U0001F6D1"
 ICON_CONFIRM = "\u2705"
+ICON_BODYWEIGHT_MAN = "\U0001F468\U0001F3FD"
+ICON_RUNNING = "\U0001F3C3\U0001F3FD"
 LIST_ROW_ICONS = ("\U0001F7E9", "\U0001F7E6")  # light green, light blue
 SETS_NUMBER_ICONS = (
     "\U0001F7E5",  # red
@@ -207,6 +215,7 @@ GROUP_TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "Calves": "Waden",
         "Chest": "Brust",
         "Legs": "Beine",
+        "Running": "Laufen",
         "Shoulders": "Schultern",
         "Triceps": "Trizeps",
     },
@@ -217,6 +226,7 @@ GROUP_TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "Calves": "Betis",
         "Chest": "Dada",
         "Legs": "Kaki",
+        "Running": "Lari",
         "Shoulders": "Bahu",
         "Triceps": "Trisep",
     },
@@ -636,6 +646,18 @@ def parse_warmup_input(text: str) -> Optional[Tuple[float, float]]:
 
 def clamp_weight_kg(value: float) -> float:
     return round(min(500.0, max(1.0, value)), 2)
+
+
+def clamp_body_weight_kg(value: float) -> float:
+    return round(min(400.0, max(20.0, value)), 2)
+
+
+def clamp_warmup_minutes(value: float) -> float:
+    return round(min(300.0, max(0.0, value)), 2)
+
+
+def clamp_warmup_distance_km(value: float) -> float:
+    return round(min(200.0, max(0.0, value)), 1)
 
 
 def clamp_sets(value: int) -> int:
@@ -1135,6 +1157,22 @@ class GymDB:
                 (body_weight_kg, session_id),
             )
 
+    def get_last_body_weight(self, user_id: int) -> Optional[float]:
+        with closing(self.connect()) as conn:
+            row = conn.execute(
+                """
+                SELECT body_weight_kg
+                FROM workout_sessions
+                WHERE user_id = ? AND body_weight_kg IS NOT NULL
+                ORDER BY COALESCE(ended_at, started_at) DESC, id DESC
+                LIMIT 1
+                """,
+                (user_id,),
+            ).fetchone()
+        if not row or row["body_weight_kg"] is None:
+            return None
+        return float(row["body_weight_kg"])
+
     def get_session(self, session_id: int) -> Optional[sqlite3.Row]:
         with closing(self.connect()) as conn:
             return conn.execute(
@@ -1421,7 +1459,10 @@ def get_muscle_groups(context: ContextTypes.DEFAULT_TYPE) -> List[str]:
     if isinstance(catalog, dict) and catalog:
         groups = [group for group, options in catalog.items() if isinstance(options, list) and options]
         if groups:
-            return sorted(groups, key=str.lower)
+            ordered = sorted(groups, key=str.lower)
+            if RUNNING_GROUP not in ordered:
+                ordered.append(RUNNING_GROUP)
+            return ordered
     return list(MUSCLE_OPTIONS)
 
 
@@ -1505,6 +1546,72 @@ def action_confirm_label(lang: str, key: str) -> str:
     return label_with_icon(ICON_CONFIRM, tr(lang, key))
 
 
+def bodyweight_prompt_text(lang: str, current_weight: float) -> str:
+    return f"{tr(lang, 'ask_body_weight')}\nCurrent: {current_weight:.2f} kg"
+
+
+def bodyweight_keyboard(current_weight: float, lang: str) -> InlineKeyboardMarkup:
+    current_weight = clamp_body_weight_kg(current_weight)
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("-50", callback_data=f"{CB_BW_ADJ_PREFIX}-50"),
+                InlineKeyboardButton("-20", callback_data=f"{CB_BW_ADJ_PREFIX}-20"),
+                InlineKeyboardButton("-10", callback_data=f"{CB_BW_ADJ_PREFIX}-10"),
+                InlineKeyboardButton("-1", callback_data=f"{CB_BW_ADJ_PREFIX}-1"),
+                InlineKeyboardButton("-0.5", callback_data=f"{CB_BW_ADJ_PREFIX}-0.5"),
+                InlineKeyboardButton("-0.1", callback_data=f"{CB_BW_ADJ_PREFIX}-0.1"),
+            ],
+            [
+                InlineKeyboardButton("+0.1", callback_data=f"{CB_BW_ADJ_PREFIX}0.1"),
+                InlineKeyboardButton("+0.5", callback_data=f"{CB_BW_ADJ_PREFIX}0.5"),
+                InlineKeyboardButton("+1", callback_data=f"{CB_BW_ADJ_PREFIX}1"),
+                InlineKeyboardButton("+10", callback_data=f"{CB_BW_ADJ_PREFIX}10"),
+                InlineKeyboardButton("+20", callback_data=f"{CB_BW_ADJ_PREFIX}20"),
+                InlineKeyboardButton("+50", callback_data=f"{CB_BW_ADJ_PREFIX}50"),
+            ],
+            [InlineKeyboardButton(f"\U0001F512 Current: {current_weight:.2f} kg", callback_data="noop")],
+            [InlineKeyboardButton(action_confirm_label(lang, "confirm_weight"), callback_data=CB_BW_CONFIRM)],
+            [InlineKeyboardButton(nav_end_label(lang), callback_data=CB_FINISH_SESSION)],
+        ]
+    )
+
+
+def warmup_prompt_text(lang: str, minutes: float, distance: float, running_only: bool) -> str:
+    if running_only:
+        title = "Set your run duration and distance:"
+    else:
+        title = tr(lang, "send_warmup")
+    return f"{title}\nCurrent: {minutes:.2f} min | {distance:.1f} km"
+
+
+def warmup_adjust_keyboard(lang: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("-10m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-10"),
+                InlineKeyboardButton("-1m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-1"),
+                InlineKeyboardButton("-0.1m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-0.1"),
+                InlineKeyboardButton("-0.01m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-0.01"),
+            ],
+            [
+                InlineKeyboardButton("+0.01m", callback_data=f"{CB_WMIN_ADJ_PREFIX}0.01"),
+                InlineKeyboardButton("+0.1m", callback_data=f"{CB_WMIN_ADJ_PREFIX}0.1"),
+                InlineKeyboardButton("+1m", callback_data=f"{CB_WMIN_ADJ_PREFIX}1"),
+                InlineKeyboardButton("+10m", callback_data=f"{CB_WMIN_ADJ_PREFIX}10"),
+            ],
+            [
+                InlineKeyboardButton("-1km", callback_data=f"{CB_WDIST_ADJ_PREFIX}-1"),
+                InlineKeyboardButton("-0.1km", callback_data=f"{CB_WDIST_ADJ_PREFIX}-0.1"),
+                InlineKeyboardButton("+0.1km", callback_data=f"{CB_WDIST_ADJ_PREFIX}0.1"),
+                InlineKeyboardButton("+1km", callback_data=f"{CB_WDIST_ADJ_PREFIX}1"),
+            ],
+            [InlineKeyboardButton("\u2705 Confirm run", callback_data=CB_WARMUP_CONFIRM)],
+            [InlineKeyboardButton(nav_end_label(lang), callback_data=CB_FINISH_SESSION)],
+        ]
+    )
+
+
 def find_exercise_in_catalog(
     catalog: Dict[str, List[ExerciseOption]],
     exercise_key: str,
@@ -1525,10 +1632,11 @@ def find_exercise_in_catalog(
 def group_keyboard(muscle_groups: List[str], lang: str) -> InlineKeyboardMarkup:
     rows = []
     for idx, group in enumerate(muscle_groups):
+        icon = ICON_RUNNING if group == RUNNING_GROUP else alternating_row_icon(idx)
         rows.append(
             [
                 InlineKeyboardButton(
-                    label_with_icon(alternating_row_icon(idx), translate_group_name(lang, group)),
+                    label_with_icon(icon, translate_group_name(lang, group)),
                     callback_data=f"{CB_GROUP_PREFIX}{group}",
                 )
             ]
@@ -1601,7 +1709,7 @@ def exercise_keyboard(exercises: List[ExerciseOption], lang: str) -> InlineKeybo
     rows = [
         [
             InlineKeyboardButton(
-                f"{alternating_row_icon(idx)} {idx + 1}. {translate_exercise_name(lang, name)}",
+                f"{idx + 1}. {translate_exercise_name(lang, name)} \u27A1\uFE0F",
                 callback_data=f"{CB_EX_PREFIX}{idx}",
             )
         ]
@@ -1616,8 +1724,8 @@ def warmup_keyboard(lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton(label_with_icon(ICON_REPS, tr(lang, "yes_warmup")), callback_data=CB_WARMUP_YES),
-                InlineKeyboardButton(label_with_icon(ICON_REPS, tr(lang, "no_warmup")), callback_data=CB_WARMUP_NO),
+                InlineKeyboardButton(f"\u2705 {tr(lang, 'yes_warmup')}", callback_data=CB_WARMUP_YES),
+                InlineKeyboardButton(f"\u274C {tr(lang, 'no_warmup')}", callback_data=CB_WARMUP_NO),
             ],
             [InlineKeyboardButton(nav_end_label(lang), callback_data=CB_FINISH_SESSION)],
         ]
@@ -1629,20 +1737,20 @@ def sets_keyboard(current_sets: int, lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton(label_with_icon(SETS_NUMBER_ICONS[0], "1"), callback_data=f"{CB_SETS_PREFIX}1"),
-                InlineKeyboardButton(label_with_icon(SETS_NUMBER_ICONS[1], "2"), callback_data=f"{CB_SETS_PREFIX}2"),
-                InlineKeyboardButton(label_with_icon(SETS_NUMBER_ICONS[2], "3"), callback_data=f"{CB_SETS_PREFIX}3"),
+                InlineKeyboardButton("1", callback_data=f"{CB_SETS_PREFIX}1"),
+                InlineKeyboardButton("2", callback_data=f"{CB_SETS_PREFIX}2"),
+                InlineKeyboardButton("3", callback_data=f"{CB_SETS_PREFIX}3"),
             ],
             [
-                InlineKeyboardButton(label_with_icon(SETS_NUMBER_ICONS[3], "4"), callback_data=f"{CB_SETS_PREFIX}4"),
-                InlineKeyboardButton(label_with_icon(SETS_NUMBER_ICONS[4], "5"), callback_data=f"{CB_SETS_PREFIX}5"),
-                InlineKeyboardButton(label_with_icon(SETS_NUMBER_ICONS[5], "6"), callback_data=f"{CB_SETS_PREFIX}6"),
+                InlineKeyboardButton("4", callback_data=f"{CB_SETS_PREFIX}4"),
+                InlineKeyboardButton("5", callback_data=f"{CB_SETS_PREFIX}5"),
+                InlineKeyboardButton("6", callback_data=f"{CB_SETS_PREFIX}6"),
             ],
             [
-                InlineKeyboardButton(label_with_icon(SETS_ADJUST_ICONS[0], "-1"), callback_data=f"{CB_SETS_ADJ_PREFIX}-1"),
-                InlineKeyboardButton(label_with_icon(SETS_ADJUST_ICONS[1], "+1"), callback_data=f"{CB_SETS_ADJ_PREFIX}+1"),
+                InlineKeyboardButton("-1", callback_data=f"{CB_SETS_ADJ_PREFIX}-1"),
+                InlineKeyboardButton("+1", callback_data=f"{CB_SETS_ADJ_PREFIX}+1"),
             ],
-            [InlineKeyboardButton(label_with_icon(ICON_CURRENT_VALUE, tr(lang, "sets_current", value=current_sets)), callback_data="noop")],
+            [InlineKeyboardButton(label_with_icon("\U0001F512", tr(lang, "sets_current", value=current_sets)), callback_data="noop")],
             [InlineKeyboardButton(action_confirm_label(lang, "confirm_sets"), callback_data=CB_SETS_CONFIRM)],
             [InlineKeyboardButton(nav_back_label(lang), callback_data=CB_BACK_EXERCISE)],
             [InlineKeyboardButton(nav_end_label(lang), callback_data=CB_FINISH_SESSION)],
@@ -1654,16 +1762,16 @@ def reps_keyboard(current_rep: int, lang: str) -> InlineKeyboardMarkup:
     current_rep = clamp_reps(current_rep)
     rows = [
         [
-            InlineKeyboardButton(label_with_icon(REPS_ADJUST_ICONS[0], "-10"), callback_data=f"{CB_REP_ADJ_PREFIX}-10"),
-            InlineKeyboardButton(label_with_icon(REPS_ADJUST_ICONS[1], "-5"), callback_data=f"{CB_REP_ADJ_PREFIX}-5"),
-            InlineKeyboardButton(label_with_icon(REPS_ADJUST_ICONS[2], "-1"), callback_data=f"{CB_REP_ADJ_PREFIX}-1"),
+            InlineKeyboardButton("-10", callback_data=f"{CB_REP_ADJ_PREFIX}-10"),
+            InlineKeyboardButton("-5", callback_data=f"{CB_REP_ADJ_PREFIX}-5"),
+            InlineKeyboardButton("-1", callback_data=f"{CB_REP_ADJ_PREFIX}-1"),
         ],
         [
-            InlineKeyboardButton(label_with_icon(REPS_ADJUST_ICONS[3], "+1"), callback_data=f"{CB_REP_ADJ_PREFIX}+1"),
-            InlineKeyboardButton(label_with_icon(REPS_ADJUST_ICONS[4], "+5"), callback_data=f"{CB_REP_ADJ_PREFIX}+5"),
-            InlineKeyboardButton(label_with_icon(REPS_ADJUST_ICONS[5], "+10"), callback_data=f"{CB_REP_ADJ_PREFIX}+10"),
+            InlineKeyboardButton("+1", callback_data=f"{CB_REP_ADJ_PREFIX}+1"),
+            InlineKeyboardButton("+5", callback_data=f"{CB_REP_ADJ_PREFIX}+5"),
+            InlineKeyboardButton("+10", callback_data=f"{CB_REP_ADJ_PREFIX}+10"),
         ],
-        [InlineKeyboardButton(label_with_icon(ICON_CURRENT_VALUE, tr(lang, "reps_current", value=current_rep)), callback_data="noop")],
+        [InlineKeyboardButton(tr(lang, "reps_current", value=current_rep), callback_data="noop")],
         [InlineKeyboardButton(action_confirm_label(lang, "confirm_reps"), callback_data=CB_REP_CONFIRM)],
         [InlineKeyboardButton(nav_back_label(lang), callback_data=CB_BACK_EXERCISE)],
         [InlineKeyboardButton(nav_end_label(lang), callback_data=CB_FINISH_SESSION)],
@@ -1695,7 +1803,7 @@ def weight_adjust_keyboard(
     if can_copy_prev:
         rows.append([InlineKeyboardButton(label_with_icon(ICON_WEIGHT, tr(lang, "use_prev_weight")), callback_data=CB_WCOPY)])
     if allow_bodyweight_button and body_weight_kg is not None:
-        rows.append([InlineKeyboardButton(label_with_icon(ICON_WEIGHT, tr(lang, "use_body_weight")), callback_data=CB_WBODY)])
+        rows.append([InlineKeyboardButton(label_with_icon(ICON_BODYWEIGHT_MAN, tr(lang, "use_body_weight")), callback_data=CB_WBODY)])
     rows.append([InlineKeyboardButton(action_confirm_label(lang, "confirm_weight"), callback_data=CB_WCONFIRM)])
     rows.append([InlineKeyboardButton(nav_back_label(lang), callback_data=CB_BACK_EXERCISE)])
     rows.append([InlineKeyboardButton(nav_end_label(lang), callback_data=CB_FINISH_SESSION)])
@@ -1869,16 +1977,19 @@ async def select_muscle_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return ConversationHandler.END
 
     session_id = db.create_session(user_id=user.id, muscle_group=group, status="active")
+    last_body_weight = db.get_last_body_weight(user.id)
+    initial_body_weight = clamp_body_weight_kg(last_body_weight if last_body_weight is not None else 70.0)
     context.user_data["workout"] = {
         "session_id": session_id,
         "muscle_group": group,
         "last_exercise_id": None,
+        "body_weight_current": initial_body_weight,
     }
 
     await query.edit_message_text(tr(lang, "workout_started", group=translate_group_name(lang, group)))
     await query.message.reply_text(
-        tr(lang, "ask_body_weight"),
-        reply_markup=end_keyboard(lang),
+        bodyweight_prompt_text(lang, initial_body_weight),
+        reply_markup=bodyweight_keyboard(initial_body_weight, lang),
     )
     return BODYWEIGHT_INPUT
 
@@ -1912,7 +2023,17 @@ async def warmup_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return SELECT_EXERCISE
 
     if data == CB_WARMUP_YES:
-        await query.edit_message_text(tr(lang, "send_warmup"))
+        workout["warmup_minutes_current"] = clamp_warmup_minutes(float(workout.get("warmup_minutes_current", 5.0)))
+        workout["warmup_distance_current"] = clamp_warmup_distance_km(float(workout.get("warmup_distance_current", 1.0)))
+        await query.edit_message_text(
+            warmup_prompt_text(
+                lang,
+                float(workout["warmup_minutes_current"]),
+                float(workout["warmup_distance_current"]),
+                running_only=False,
+            ),
+            reply_markup=warmup_adjust_keyboard(lang),
+        )
         return WARMUP_INPUT
 
     await query.edit_message_text(tr(lang, "invalid_option_restart"))
@@ -1934,9 +2055,87 @@ async def bodyweight_input_msg(update: Update, context: ContextTypes.DEFAULT_TYP
     db = get_db(context)
     db.set_session_body_weight(int(workout["session_id"]), body_weight)
     workout["body_weight_kg"] = body_weight
+    workout["body_weight_current"] = body_weight
 
     await update.effective_message.reply_text(tr(lang, "body_weight_saved", body_weight=body_weight))
+    if str(workout.get("muscle_group", "")) == RUNNING_GROUP:
+        workout["warmup_minutes_current"] = clamp_warmup_minutes(float(workout.get("warmup_minutes_current", 20.0)))
+        workout["warmup_distance_current"] = clamp_warmup_distance_km(float(workout.get("warmup_distance_current", 3.0)))
+        await update.effective_message.reply_text(
+            warmup_prompt_text(
+                lang,
+                float(workout["warmup_minutes_current"]),
+                float(workout["warmup_distance_current"]),
+                running_only=True,
+            ),
+            reply_markup=warmup_adjust_keyboard(lang),
+        )
+        return WARMUP_INPUT
+
     await update.effective_message.reply_text(
+        tr(lang, "did_warmup"),
+        reply_markup=warmup_keyboard(lang),
+    )
+    return WARMUP_CHOICE
+
+
+async def bodyweight_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+
+    workout = context.user_data.get("workout")
+    if not workout:
+        await query.edit_message_text(tr("en", "no_active_session"))
+        return ConversationHandler.END
+    lang = user_lang(context, update.effective_user.id)
+
+    data = query.data or ""
+    if data == CB_FINISH_SESSION:
+        return await finish_workout(update, context)
+    if data == "noop":
+        return BODYWEIGHT_INPUT
+
+    current_weight = clamp_body_weight_kg(float(workout.get("body_weight_current", 70.0)))
+    if data.startswith(CB_BW_ADJ_PREFIX):
+        try:
+            delta = float(data.split(":", 1)[1])
+        except ValueError:
+            await query.edit_message_text(tr(lang, "invalid_body_weight"))
+            return BODYWEIGHT_INPUT
+
+        current_weight = clamp_body_weight_kg(current_weight + delta)
+        workout["body_weight_current"] = current_weight
+        await query.edit_message_text(
+            bodyweight_prompt_text(lang, current_weight),
+            reply_markup=bodyweight_keyboard(current_weight, lang),
+        )
+        return BODYWEIGHT_INPUT
+
+    if data != CB_BW_CONFIRM:
+        await query.edit_message_text(tr(lang, "invalid_option_restart"))
+        return ConversationHandler.END
+
+    db = get_db(context)
+    db.set_session_body_weight(int(workout["session_id"]), current_weight)
+    workout["body_weight_kg"] = current_weight
+    workout["body_weight_current"] = current_weight
+
+    await query.edit_message_text(tr(lang, "body_weight_saved", body_weight=current_weight))
+    if str(workout.get("muscle_group", "")) == RUNNING_GROUP:
+        workout["warmup_minutes_current"] = clamp_warmup_minutes(float(workout.get("warmup_minutes_current", 20.0)))
+        workout["warmup_distance_current"] = clamp_warmup_distance_km(float(workout.get("warmup_distance_current", 3.0)))
+        await query.message.reply_text(
+            warmup_prompt_text(
+                lang,
+                float(workout["warmup_minutes_current"]),
+                float(workout["warmup_distance_current"]),
+                running_only=True,
+            ),
+            reply_markup=warmup_adjust_keyboard(lang),
+        )
+        return WARMUP_INPUT
+
+    await query.message.reply_text(
         tr(lang, "did_warmup"),
         reply_markup=warmup_keyboard(lang),
     )
@@ -1958,11 +2157,89 @@ async def warmup_input_msg(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     minutes, distance = parsed
     db = get_db(context)
     db.set_session_warmup(int(workout["session_id"]), done=True, minutes=minutes, distance_km=distance)
+    workout["warmup_minutes_current"] = minutes
+    workout["warmup_distance_current"] = distance
+
+    if str(workout.get("muscle_group", "")) == RUNNING_GROUP:
+        await update.effective_message.reply_text(tr(lang, "warmup_saved", minutes=minutes, distance=distance))
+        return await finish_workout(update, context)
 
     group = str(workout["muscle_group"])
     exercise_options = get_exercise_options(context, group)
     await update.effective_message.reply_text(tr(lang, "warmup_saved", minutes=minutes, distance=distance))
     await update.effective_message.reply_text(
+        tr(lang, "pick_exercise", group=translate_group_name(lang, group)),
+        reply_markup=exercise_keyboard(exercise_options, lang),
+    )
+    return SELECT_EXERCISE
+
+
+async def warmup_input_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+
+    workout = context.user_data.get("workout")
+    if not workout:
+        await query.edit_message_text(tr("en", "no_active_session"))
+        return ConversationHandler.END
+    lang = user_lang(context, update.effective_user.id)
+
+    data = query.data or ""
+    if data == CB_FINISH_SESSION:
+        return await finish_workout(update, context)
+
+    group = str(workout.get("muscle_group", ""))
+    running_only = group == RUNNING_GROUP
+    minutes = clamp_warmup_minutes(float(workout.get("warmup_minutes_current", 5.0)))
+    distance = clamp_warmup_distance_km(float(workout.get("warmup_distance_current", 1.0)))
+
+    if data.startswith(CB_WMIN_ADJ_PREFIX):
+        try:
+            delta = float(data.split(":", 1)[1])
+        except ValueError:
+            await query.edit_message_text(tr(lang, "warmup_format_error"))
+            return WARMUP_INPUT
+        minutes = clamp_warmup_minutes(minutes + delta)
+        workout["warmup_minutes_current"] = minutes
+        await query.edit_message_text(
+            warmup_prompt_text(lang, minutes, distance, running_only=running_only),
+            reply_markup=warmup_adjust_keyboard(lang),
+        )
+        return WARMUP_INPUT
+
+    if data.startswith(CB_WDIST_ADJ_PREFIX):
+        try:
+            delta = float(data.split(":", 1)[1])
+        except ValueError:
+            await query.edit_message_text(tr(lang, "warmup_format_error"))
+            return WARMUP_INPUT
+        distance = clamp_warmup_distance_km(distance + delta)
+        workout["warmup_distance_current"] = distance
+        await query.edit_message_text(
+            warmup_prompt_text(lang, minutes, distance, running_only=running_only),
+            reply_markup=warmup_adjust_keyboard(lang),
+        )
+        return WARMUP_INPUT
+
+    if data != CB_WARMUP_CONFIRM:
+        await query.edit_message_text(tr(lang, "invalid_option_restart"))
+        return ConversationHandler.END
+
+    if minutes <= 0:
+        await query.answer("Time must be greater than 0.", show_alert=True)
+        return WARMUP_INPUT
+
+    db = get_db(context)
+    db.set_session_warmup(int(workout["session_id"]), done=True, minutes=minutes, distance_km=distance)
+    workout["warmup_minutes_current"] = minutes
+    workout["warmup_distance_current"] = distance
+
+    await query.edit_message_text(tr(lang, "warmup_saved", minutes=minutes, distance=distance))
+    if running_only:
+        return await finish_workout(update, context)
+
+    exercise_options = get_exercise_options(context, group)
+    await query.message.reply_text(
         tr(lang, "pick_exercise", group=translate_group_name(lang, group)),
         reply_markup=exercise_keyboard(exercise_options, lang),
     )
@@ -2000,6 +2277,17 @@ async def select_exercise_cb(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         workout["muscle_group"] = group
         clear_pending_exercise_input(workout)
+        if group == RUNNING_GROUP:
+            db = get_db(context)
+            fallback_bw = db.get_last_body_weight(update.effective_user.id)
+            current_bw = clamp_body_weight_kg(float(workout.get("body_weight_kg", fallback_bw if fallback_bw is not None else 70.0)))
+            workout["body_weight_current"] = current_bw
+            await query.edit_message_text(
+                bodyweight_prompt_text(lang, current_bw),
+                reply_markup=bodyweight_keyboard(current_bw, lang),
+            )
+            return BODYWEIGHT_INPUT
+
         exercise_options = get_exercise_options(context, group)
         await query.edit_message_text(
             tr(lang, "pick_exercise", group=translate_group_name(lang, group)),
@@ -2464,7 +2752,14 @@ async def finish_workout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         warmup_distance = float(session["warmup_distance_km"] or 0.0)
         warmup_line = tr(lang, "warmup_line", minutes=warmup_minutes, distance=warmup_distance)
 
-    if count > 0:
+    is_running_completed = bool(
+        session
+        and str(session["muscle_group"]) == RUNNING_GROUP
+        and int(session["warmup_done"] or 0) == 1
+        and float(session["warmup_minutes"] or 0.0) > 0
+    )
+
+    if count > 0 or is_running_completed:
         db.close_session(session_id, "completed")
         completed_rows = db.get_last_completed_workouts(user_id=user.id, limit=2)
         body_weight_line = ""
@@ -2809,7 +3104,10 @@ def build_application() -> Application:
             ],
             BODYWEIGHT_INPUT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, bodyweight_input_msg),
-                CallbackQueryHandler(finish_workout, pattern=r"^finish_session$"),
+                CallbackQueryHandler(
+                    bodyweight_choice_cb,
+                    pattern=r"^(bwadj:[+-]?(?:\d+(?:\.\d+)?)|bwconfirm|finish_session|noop)$",
+                ),
             ],
             WARMUP_CHOICE: [
                 CallbackQueryHandler(
@@ -2819,7 +3117,10 @@ def build_application() -> Application:
             ],
             WARMUP_INPUT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, warmup_input_msg),
-                CallbackQueryHandler(finish_workout, pattern=r"^finish_session$"),
+                CallbackQueryHandler(
+                    warmup_input_cb,
+                    pattern=r"^(wminadj:[+-]?(?:\d+(?:\.\d+)?)|wdistadj:[+-]?(?:\d+(?:\.\d+)?)|warmup_confirm|finish_session)$",
+                ),
             ],
             SELECT_EXERCISE: [
                 CallbackQueryHandler(
