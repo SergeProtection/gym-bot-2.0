@@ -130,7 +130,7 @@ ICON_WEIGHT = "\U0001F7E0"
 ICON_BACK = "\u2B05\uFE0F"
 ICON_STOP = "\U0001F6D1"
 ICON_CONFIRM = "\u2705"
-ICON_BODYWEIGHT_MAN = "\U0001F468\U0001F3FD"
+ICON_BODYWEIGHT_MAN = "\u2696\uFE0F"
 ICON_RUNNING = "\U0001F3C3\U0001F3FD"
 
 SUPPORTED_LANGS = ("en", "id", "ru", "de")
@@ -1648,20 +1648,20 @@ def bodyweight_keyboard(current_weight: float, lang: str) -> InlineKeyboardMarku
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("-50", callback_data=f"{CB_BW_ADJ_PREFIX}-50"),
-                InlineKeyboardButton("-20", callback_data=f"{CB_BW_ADJ_PREFIX}-20"),
-                InlineKeyboardButton("-10", callback_data=f"{CB_BW_ADJ_PREFIX}-10"),
-                InlineKeyboardButton("-1", callback_data=f"{CB_BW_ADJ_PREFIX}-1"),
-                InlineKeyboardButton("-0.5", callback_data=f"{CB_BW_ADJ_PREFIX}-0.5"),
-                InlineKeyboardButton("-0.1", callback_data=f"{CB_BW_ADJ_PREFIX}-0.1"),
-            ],
-            [
                 InlineKeyboardButton("+0.1", callback_data=f"{CB_BW_ADJ_PREFIX}0.1"),
                 InlineKeyboardButton("+0.5", callback_data=f"{CB_BW_ADJ_PREFIX}0.5"),
                 InlineKeyboardButton("+1", callback_data=f"{CB_BW_ADJ_PREFIX}1"),
                 InlineKeyboardButton("+10", callback_data=f"{CB_BW_ADJ_PREFIX}10"),
                 InlineKeyboardButton("+20", callback_data=f"{CB_BW_ADJ_PREFIX}20"),
                 InlineKeyboardButton("+50", callback_data=f"{CB_BW_ADJ_PREFIX}50"),
+            ],
+            [
+                InlineKeyboardButton("-50", callback_data=f"{CB_BW_ADJ_PREFIX}-50"),
+                InlineKeyboardButton("-20", callback_data=f"{CB_BW_ADJ_PREFIX}-20"),
+                InlineKeyboardButton("-10", callback_data=f"{CB_BW_ADJ_PREFIX}-10"),
+                InlineKeyboardButton("-1", callback_data=f"{CB_BW_ADJ_PREFIX}-1"),
+                InlineKeyboardButton("-0.5", callback_data=f"{CB_BW_ADJ_PREFIX}-0.5"),
+                InlineKeyboardButton("-0.1", callback_data=f"{CB_BW_ADJ_PREFIX}-0.1"),
             ],
             [InlineKeyboardButton(f"\U0001F512 Current: {current_weight:.2f} kg", callback_data="noop")],
             [InlineKeyboardButton(action_confirm_label(lang, "confirm_weight"), callback_data=CB_BW_CONFIRM)],
@@ -1678,18 +1678,18 @@ def warmup_minutes_keyboard(lang: str, minutes: float) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("-60m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-60"),
-                InlineKeyboardButton("-10m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-10"),
-                InlineKeyboardButton("-1m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-1"),
-                InlineKeyboardButton("-0.1m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-0.1"),
-                InlineKeyboardButton("-0.01m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-0.01"),
-            ],
-            [
                 InlineKeyboardButton("+0.01m", callback_data=f"{CB_WMIN_ADJ_PREFIX}0.01"),
                 InlineKeyboardButton("+0.1m", callback_data=f"{CB_WMIN_ADJ_PREFIX}0.1"),
                 InlineKeyboardButton("+1m", callback_data=f"{CB_WMIN_ADJ_PREFIX}1"),
                 InlineKeyboardButton("+10m", callback_data=f"{CB_WMIN_ADJ_PREFIX}10"),
                 InlineKeyboardButton("+60m", callback_data=f"{CB_WMIN_ADJ_PREFIX}60"),
+            ],
+            [
+                InlineKeyboardButton("-60m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-60"),
+                InlineKeyboardButton("-10m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-10"),
+                InlineKeyboardButton("-1m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-1"),
+                InlineKeyboardButton("-0.1m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-0.1"),
+                InlineKeyboardButton("-0.01m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-0.01"),
             ],
             [InlineKeyboardButton(f"\U0001F512 Current: {minutes:.2f} min", callback_data="noop")],
             [InlineKeyboardButton(action_confirm_label(lang, "confirm_minutes"), callback_data=CB_WARMUP_CONFIRM)],
@@ -1706,14 +1706,14 @@ def warmup_distance_keyboard(lang: str, distance: float) -> InlineKeyboardMarkup
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("-10km", callback_data=f"{CB_WDIST_ADJ_PREFIX}-10"),
-                InlineKeyboardButton("-1km", callback_data=f"{CB_WDIST_ADJ_PREFIX}-1"),
-                InlineKeyboardButton("-0.1km", callback_data=f"{CB_WDIST_ADJ_PREFIX}-0.1"),
-            ],
-            [
                 InlineKeyboardButton("+0.1km", callback_data=f"{CB_WDIST_ADJ_PREFIX}0.1"),
                 InlineKeyboardButton("+1km", callback_data=f"{CB_WDIST_ADJ_PREFIX}1"),
                 InlineKeyboardButton("+10km", callback_data=f"{CB_WDIST_ADJ_PREFIX}10"),
+            ],
+            [
+                InlineKeyboardButton("-10km", callback_data=f"{CB_WDIST_ADJ_PREFIX}-10"),
+                InlineKeyboardButton("-1km", callback_data=f"{CB_WDIST_ADJ_PREFIX}-1"),
+                InlineKeyboardButton("-0.1km", callback_data=f"{CB_WDIST_ADJ_PREFIX}-0.1"),
             ],
             [InlineKeyboardButton(f"\U0001F512 Current: {distance:.1f} km", callback_data="noop")],
             [InlineKeyboardButton(action_confirm_label(lang, "confirm_distance"), callback_data=CB_WARMUP_CONFIRM)],
@@ -1856,8 +1856,10 @@ def sets_keyboard(current_sets: int, lang: str) -> InlineKeyboardMarkup:
                 InlineKeyboardButton("6", callback_data=f"{CB_SETS_PREFIX}6"),
             ],
             [
-                InlineKeyboardButton("-1", callback_data=f"{CB_SETS_ADJ_PREFIX}-1"),
                 InlineKeyboardButton("+1", callback_data=f"{CB_SETS_ADJ_PREFIX}+1"),
+            ],
+            [
+                InlineKeyboardButton("-1", callback_data=f"{CB_SETS_ADJ_PREFIX}-1"),
             ],
             [InlineKeyboardButton(label_with_icon("\U0001F512", tr(lang, "sets_current", value=current_sets)), callback_data="noop")],
             [InlineKeyboardButton(action_confirm_label(lang, "confirm_sets"), callback_data=CB_SETS_CONFIRM)],
@@ -1871,14 +1873,14 @@ def reps_keyboard(current_rep: int, lang: str) -> InlineKeyboardMarkup:
     current_rep = clamp_reps(current_rep)
     rows = [
         [
-            InlineKeyboardButton("-10", callback_data=f"{CB_REP_ADJ_PREFIX}-10"),
-            InlineKeyboardButton("-5", callback_data=f"{CB_REP_ADJ_PREFIX}-5"),
-            InlineKeyboardButton("-1", callback_data=f"{CB_REP_ADJ_PREFIX}-1"),
-        ],
-        [
             InlineKeyboardButton("+1", callback_data=f"{CB_REP_ADJ_PREFIX}+1"),
             InlineKeyboardButton("+5", callback_data=f"{CB_REP_ADJ_PREFIX}+5"),
             InlineKeyboardButton("+10", callback_data=f"{CB_REP_ADJ_PREFIX}+10"),
+        ],
+        [
+            InlineKeyboardButton("-10", callback_data=f"{CB_REP_ADJ_PREFIX}-10"),
+            InlineKeyboardButton("-5", callback_data=f"{CB_REP_ADJ_PREFIX}-5"),
+            InlineKeyboardButton("-1", callback_data=f"{CB_REP_ADJ_PREFIX}-1"),
         ],
         [InlineKeyboardButton(label_with_icon("\U0001F512", tr(lang, "reps_current", value=current_rep)), callback_data="noop")],
         [InlineKeyboardButton(action_confirm_label(lang, "confirm_reps"), callback_data=CB_REP_CONFIRM)],
@@ -1896,21 +1898,21 @@ def weight_adjust_keyboard(
 ) -> InlineKeyboardMarkup:
     rows = [
         [
-            InlineKeyboardButton(f"{ICON_WEIGHT} -20", callback_data=f"{CB_WADJ_PREFIX}-20"),
-            InlineKeyboardButton(f"{ICON_WEIGHT} -10", callback_data=f"{CB_WADJ_PREFIX}-10"),
-            InlineKeyboardButton(f"{ICON_WEIGHT} -2.5", callback_data=f"{CB_WADJ_PREFIX}-2.5"),
-            InlineKeyboardButton(f"{ICON_WEIGHT} -1", callback_data=f"{CB_WADJ_PREFIX}-1"),
+            InlineKeyboardButton("+1", callback_data=f"{CB_WADJ_PREFIX}1"),
+            InlineKeyboardButton("+2.5", callback_data=f"{CB_WADJ_PREFIX}2.5"),
+            InlineKeyboardButton("+10", callback_data=f"{CB_WADJ_PREFIX}10"),
+            InlineKeyboardButton("+20", callback_data=f"{CB_WADJ_PREFIX}20"),
+            InlineKeyboardButton("+50", callback_data=f"{CB_WADJ_PREFIX}50"),
         ],
         [
-            InlineKeyboardButton(f"{ICON_WEIGHT} +1", callback_data=f"{CB_WADJ_PREFIX}1"),
-            InlineKeyboardButton(f"{ICON_WEIGHT} +2.5", callback_data=f"{CB_WADJ_PREFIX}2.5"),
-            InlineKeyboardButton(f"{ICON_WEIGHT} +10", callback_data=f"{CB_WADJ_PREFIX}10"),
-            InlineKeyboardButton(f"{ICON_WEIGHT} +20", callback_data=f"{CB_WADJ_PREFIX}20"),
-            InlineKeyboardButton(f"{ICON_WEIGHT} +50", callback_data=f"{CB_WADJ_PREFIX}50"),
+            InlineKeyboardButton("-20", callback_data=f"{CB_WADJ_PREFIX}-20"),
+            InlineKeyboardButton("-10", callback_data=f"{CB_WADJ_PREFIX}-10"),
+            InlineKeyboardButton("-2.5", callback_data=f"{CB_WADJ_PREFIX}-2.5"),
+            InlineKeyboardButton("-1", callback_data=f"{CB_WADJ_PREFIX}-1"),
         ],
     ]
     if can_copy_prev:
-        rows.append([InlineKeyboardButton(label_with_icon(ICON_WEIGHT, tr(lang, "use_prev_weight")), callback_data=CB_WCOPY)])
+        rows.append([InlineKeyboardButton(tr(lang, "use_prev_weight"), callback_data=CB_WCOPY)])
     if allow_bodyweight_button and body_weight_kg is not None:
         rows.append([InlineKeyboardButton(label_with_icon(ICON_BODYWEIGHT_MAN, tr(lang, "use_body_weight")), callback_data=CB_WBODY)])
     rows.append([InlineKeyboardButton(action_confirm_label(lang, "confirm_weight"), callback_data=CB_WCONFIRM)])
@@ -2956,7 +2958,6 @@ async def finish_workout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         text += tr(lang, "running_month_line", minutes=month_minutes, distance=month_distance)
         text += tr(lang, "volume_week_line", volume=week_summary["total_volume"])
         text += tr(lang, "volume_month_line", volume=month_summary["total_volume"])
-        text += tr(lang, "volume_total_line", volume=db.get_total_training_volume(user.id))
     else:
         db.close_session(session_id, "cancelled")
         recent = recent_groups_text(db, user.id, lang)
