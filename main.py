@@ -123,6 +123,7 @@ CB_WBODY = "wbody"
 CB_BACK_EXERCISE = "back_exercise"
 CB_BACK_GROUPS = "back_groups"
 CB_LANG_PREFIX = "lang:"
+CB_START_WORKOUT = "start_workout"
 PDF_EXERCISE_TRANSLATIONS: Dict[str, Dict[str, str]] = {"de": {}, "ru": {}}
 
 ICON_EXERCISE = "\U0001F7E2"
@@ -132,6 +133,7 @@ ICON_STOP = "\U0001F6D1"
 ICON_CONFIRM = "\u2705"
 ICON_BODYWEIGHT_MAN = "\u2696\uFE0F"
 ICON_RUNNING = "\U0001F3C3\U0001F3FD"
+ICON_REFRESH = "\U0001F504"
 
 SUPPORTED_LANGS = ("en", "id", "ru", "de")
 LANG_LABELS = {
@@ -329,9 +331,11 @@ TR: Dict[str, Dict[str, str]] = {
         "select_language": "Choose your language:",
         "language_saved": "Language saved.",
         "welcome": "Welcome to GymBot.\nUse /workout to log a workout session.\nNext in your 4-day rotation: {next_group}\n\nCommands:\n/workout, /last, /history, /today, /thisweek, /pr, /help",
-        "welcome_free_plan": "Welcome to GymBot.\nUse /workout to log a workout session.\nAvailable muscle groups: {groups}\nRecent muscle groups: {recent}\n\nCommands:\n/workout, /last, /history, /today, /thisweek, /pr, /help",
+        "welcome_free_plan": "Welcome to GymBot.\nUse /workout to log a workout session.\nAvailable muscle groups: {groups}\nRecent workout: {recent}\n\nCommands:\n/workout, /last, /history, /today, /thisweek, /pr, /help",
         "help": "/start - Register and initialize reminders\n/workout - Log a workout\n/last - Last 3 completed workouts\n/history - Export workout history CSV\n/today - Today summary stats\n/thisweek - Weekly volume by muscle group\n/pr - Personal records (max weight by exercise)\n/cancel - Cancel active workout conversation",
         "help_extra": "/month [MM.YYYY] - Monthly totals\n/period <from> <to> - Custom period totals",
+        "start_new_workout": "Start new workout",
+        "next_workout_prompt": "Ready for the next workout?",
         "none_yet": "None yet",
         "skip_day": "Skip day",
         "end_workout": "End workout",
@@ -349,7 +353,7 @@ TR: Dict[str, Dict[str, str]] = {
         "choose_workout_mode": "How do you want to train today?",
         "running_today": "Running only",
         "strength_today": "Strength workout",
-        "choose_muscle": "Choose the muscle group you're training today:\nRecent muscle groups: {recent}",
+        "choose_muscle": "Choose the muscle group you're training today:\nRecent workout: {recent}",
         "workout_ended": "Workout ended.",
         "invalid_selection_restart": "Invalid selection. Use /workout to start again.",
         "unknown_group_restart": "Unknown muscle group. Use /workout to start again.",
@@ -414,8 +418,8 @@ TR: Dict[str, Dict[str, str]] = {
         "body_weight_change_loss": "losing {delta:.2f} kg",
         "body_weight_change_same": "no change",
         "body_weight_change_first": "first record",
-        "today_summary": "Today Summary (UTC)\nCompleted workouts: {session_count}\nExercises logged: {exercise_count}\nTotal volume: {total_volume:.2f}\nWarm-up sessions: {warmup_count}\nWarm-up total: {warmup_minutes_total:.2f} min, {warmup_distance_total:.2f} km\nVolume by muscle group:\n{group_lines}",
-        "week_summary": "This Week Summary (UTC)\nWeek: {start_date} to {end_date}\nCompleted workouts: {session_count}\nExercises logged: {exercise_count}\nTotal weekly volume: {total_volume:.2f}\nWarm-up sessions: {warmup_count}\nWarm-up total: {warmup_minutes_total:.2f} min, {warmup_distance_total:.2f} km\nWeekly volume by muscle group:\n{group_lines}",
+        "today_summary": "Today Summary (UTC)\nCompleted workouts: {session_count}\nExercises logged: {exercise_count}\nTotal volume: {total_volume:.2f}\nRun sessions: {warmup_count}\nTotal run: {warmup_minutes_total:.2f} min, {warmup_distance_total:.2f} km\nVolume by muscle group:\n{group_lines}",
+        "week_summary": "This Week Summary (UTC)\nWeek: {start_date} to {end_date}\nCompleted workouts: {session_count}\nExercises logged: {exercise_count}\nTotal weekly volume: {total_volume:.2f}\nRun sessions: {warmup_count}\nTotal run: {warmup_minutes_total:.2f} min, {warmup_distance_total:.2f} km\nWeekly volume by muscle group:\n{group_lines}",
         "month_summary": "Month Summary (UTC)\nMonth: {month}\nCompleted workouts: {session_count}\nExercises logged: {exercise_count}\nRunning: {minutes:.2f} min, {distance:.2f} km\nTraining volume: {volume:.2f}",
         "period_summary": "Period Summary (UTC)\nFrom: {start_date}\nTo: {end_date}\nCompleted workouts: {session_count}\nExercises logged: {exercise_count}\nRunning: {minutes:.2f} min, {distance:.2f} km\nTraining volume: {volume:.2f}",
         "month_usage": "Usage: /month or /month MM.YYYY (example: /month 02.2026)",
@@ -429,9 +433,9 @@ TR: Dict[str, Dict[str, str]] = {
         "error_text": "An unexpected error occurred. Please try again.",
         "workout_finish": "Workout ended.\nExercises saved: {count}\nTotal volume: {volume:.2f}{warmup_line}\nNext scheduled group: {next_group}",
         "workout_finish_empty": "Workout ended with no exercises saved.\nNext scheduled group remains: {next_group}",
-        "workout_finish_free": "Workout ended.\nExercises saved: {count}\nTotal volume: {volume:.2f}{warmup_line}\nRecent muscle groups: {recent}",
-        "workout_finish_empty_free": "Workout ended with no exercises saved.\nRecent muscle groups: {recent}",
-        "warmup_line": "\nWarm-up: {minutes:.2f} min, {distance:.2f} km",
+        "workout_finish_free": "Workout ended.\nExercises saved: {count}\nTotal volume: {volume:.2f}{warmup_line}\nRecent workout: {recent}",
+        "workout_finish_empty_free": "Workout ended with no exercises saved.\nRecent workout: {recent}",
+        "warmup_line": "\nRun: {minutes:.2f} min, {distance:.2f} km",
         "body_weight_line": "\nBodyweight: {body_weight} ({delta})",
         "running_week_line": "\nRunning this week: {minutes:.2f} min, {distance:.2f} km",
         "running_month_line": "\nRunning this month: {minutes:.2f} min, {distance:.2f} km",
@@ -439,7 +443,7 @@ TR: Dict[str, Dict[str, str]] = {
         "volume_month_line": "\nTraining volume this month: {volume:.2f}",
         "volume_total_line": "\nTotal training volume so far: {volume:.2f}",
         "skipped_day": "Skipped day recorded for {skipped}.\nNext scheduled group: {next_group}",
-        "reminder_free": "GymBot reminder:\nTime to log your workout.\nRecent muscle groups: {recent}\nUse /workout to log your session.",
+        "reminder_free": "GymBot reminder:\nTime to log your workout.\nRecent workout: {recent}\nUse /workout to log your session.",
     },
     "id": {
         "select_language": "Pilih bahasa Anda:",
@@ -503,8 +507,10 @@ TR: Dict[str, Dict[str, str]] = {
     "de": {
         "select_language": "Wähle deine Sprache:",
         "language_saved": "Sprache gespeichert.",
-        "welcome_free_plan": "Willkommen bei GymBot.\nNutze /training für dein Workout.\nVerfügbare Muskelgruppen: {groups}\nZuletzt trainiert: {recent}\n\nBefehle:\n/training, /letzte, /verlauf, /heute, /woche, /rekorde, /hilfe",
+        "welcome_free_plan": "Willkommen bei GymBot.\nNutze /training für dein Workout.\nVerfügbare Muskelgruppen: {groups}\nLetztes Workout: {recent}\n\nBefehle:\n/training, /letzte, /verlauf, /heute, /woche, /rekorde, /hilfe",
         "help": "/start - Registrierung und Erinnerungen\n/training - Workout protokollieren\n/letzte - Letzte 3 abgeschlossene Workouts\n/verlauf - Verlauf als CSV exportieren\n/heute - Tageszusammenfassung\n/woche - Wochenzusammenfassung\n/rekorde - Persönliche Rekorde\n/abbrechen - Aktuellen Ablauf abbrechen",
+        "start_new_workout": "Neues Workout starten",
+        "next_workout_prompt": "Bereit für das nächste Workout?",
         "none_yet": "Noch keine",
         "end_workout": "Training beenden",
         "yes_warmup": "Ja, Warm-up Lauf gemacht",
@@ -518,7 +524,7 @@ TR: Dict[str, Dict[str, str]] = {
         "use_body_weight": "Mein Körpergewicht",
         "confirm_weight": "Gewicht bestätigen",
         "closed_unfinished": "Vorherige unvollständige Workout-Session wurde geschlossen.",
-        "choose_muscle": "Wähle die Muskelgruppe für heute:\nZuletzt trainiert: {recent}",
+        "choose_muscle": "Wähle die Muskelgruppe für heute:\nLetztes Workout: {recent}",
         "workout_ended": "Training beendet.",
         "invalid_selection_restart": "Ungültige Auswahl. Nutze /training für einen Neustart.",
         "unknown_group_restart": "Unbekannte Muskelgruppe. Nutze /training für einen Neustart.",
@@ -579,16 +585,16 @@ TR: Dict[str, Dict[str, str]] = {
         "body_weight_change_loss": "abnahme {delta:.2f} kg",
         "body_weight_change_same": "keine Veränderung",
         "body_weight_change_first": "erster Eintrag",
-        "today_summary": "Heute Zusammenfassung (UTC)\nAbgeschlossene Workouts: {session_count}\nProtokollierte Übungen: {exercise_count}\nGesamtvolumen: {total_volume:.2f}\nWarm-up Sessions: {warmup_count}\nWarm-up Gesamt: {warmup_minutes_total:.2f} min, {warmup_distance_total:.2f} km\nVolumen nach Muskelgruppe:\n{group_lines}",
-        "week_summary": "Diese Woche Zusammenfassung (UTC)\nWoche: {start_date} bis {end_date}\nAbgeschlossene Workouts: {session_count}\nProtokollierte Übungen: {exercise_count}\nWochenvolumen gesamt: {total_volume:.2f}\nWarm-up Sessions: {warmup_count}\nWarm-up Gesamt: {warmup_minutes_total:.2f} min, {warmup_distance_total:.2f} km\nWochenvolumen nach Muskelgruppe:\n{group_lines}",
+        "today_summary": "Heute Zusammenfassung (UTC)\nAbgeschlossene Workouts: {session_count}\nProtokollierte Übungen: {exercise_count}\nGesamtvolumen: {total_volume:.2f}\nRun Sessions: {warmup_count}\nTotal run: {warmup_minutes_total:.2f} min, {warmup_distance_total:.2f} km\nVolumen nach Muskelgruppe:\n{group_lines}",
+        "week_summary": "Diese Woche Zusammenfassung (UTC)\nWoche: {start_date} bis {end_date}\nAbgeschlossene Workouts: {session_count}\nProtokollierte Übungen: {exercise_count}\nWochenvolumen gesamt: {total_volume:.2f}\nRun Sessions: {warmup_count}\nTotal run: {warmup_minutes_total:.2f} min, {warmup_distance_total:.2f} km\nWochenvolumen nach Muskelgruppe:\n{group_lines}",
         "no_prs": "Noch keine PRs. Starte ein Workout mit /training.",
         "pr_header": "Persönliche Rekorde (max. Gewicht pro Übung):",
         "pr_line": "{name}: {weight:.2f} kg",
-        "workout_finish_free": "Training beendet.\nGespeicherte Übungen: {count}\nGesamtvolumen: {volume:.2f}{warmup_line}\nZuletzt trainiert: {recent}",
-        "workout_finish_empty_free": "Training beendet ohne gespeicherte Übungen.\nZuletzt trainiert: {recent}",
-        "warmup_line": "\nWarm-up: {minutes:.2f} min, {distance:.2f} km",
+        "workout_finish_free": "Training beendet.\nGespeicherte Übungen: {count}\nGesamtvolumen: {volume:.2f}{warmup_line}\nLetztes Workout: {recent}",
+        "workout_finish_empty_free": "Training beendet ohne gespeicherte Übungen.\nLetztes Workout: {recent}",
+        "warmup_line": "\nRun: {minutes:.2f} min, {distance:.2f} km",
         "body_weight_line": "\nKörpergewicht: {body_weight} ({delta})",
-        "reminder_free": "GymBot Erinnerung:\nZeit für dein Training.\nZuletzt trainiert: {recent}\nNutze /training für dein Workout.",
+        "reminder_free": "GymBot Erinnerung:\nZeit für dein Training.\nLetztes Workout: {recent}\nNutze /training für dein Workout.",
     },
 }
 
@@ -1115,17 +1121,23 @@ class GymDB:
                     ws.muscle_group,
                     ws.ended_at,
                     ws.body_weight_kg,
-                    COUNT(e.id) AS exercise_count,
+                    (
+                        COUNT(e.id) +
+                        CASE
+                            WHEN ws.muscle_group = ? AND ws.warmup_done = 1 THEN 1
+                            ELSE 0
+                        END
+                    ) AS exercise_count,
                     COALESCE(SUM(e.volume), 0) AS total_volume
                 FROM workout_sessions ws
                 LEFT JOIN exercises e ON e.session_id = ws.id
                 WHERE ws.user_id = ?
                   AND ws.status = 'completed'
-                GROUP BY ws.id, ws.muscle_group, ws.ended_at, ws.body_weight_kg
+                GROUP BY ws.id, ws.muscle_group, ws.ended_at, ws.body_weight_kg, ws.warmup_done
                 ORDER BY ws.ended_at DESC
                 LIMIT ?
                 """,
-                (user_id, limit),
+                (RUNNING_GROUP, user_id, limit),
             ).fetchall()
 
     def get_next_group(self, user_id: int) -> str:
@@ -1389,12 +1401,26 @@ class GymDB:
                 (user_id, start_iso, end_iso),
             ).fetchone()
 
+            running_as_exercise = conn.execute(
+                """
+                SELECT COUNT(*) AS running_exercise_count
+                FROM workout_sessions
+                WHERE user_id = ?
+                  AND status = 'completed'
+                  AND muscle_group = ?
+                  AND warmup_done = 1
+                  AND COALESCE(ended_at, started_at) >= ?
+                  AND COALESCE(ended_at, started_at) < ?
+                """,
+                (user_id, RUNNING_GROUP, start_iso, end_iso),
+            ).fetchone()
+
         group_volumes: Dict[str, float] = {}
         for row in group_rows:
             group_volumes[row["muscle_group"]] = float(row["group_volume"])
 
         return {
-            "exercise_count": int(totals["exercise_count"]),
+            "exercise_count": int(totals["exercise_count"]) + int(running_as_exercise["running_exercise_count"]),
             "total_volume": float(totals["total_volume"]),
             "session_count": int(session_count["session_count"]),
             "group_volumes": group_volumes,
@@ -1627,6 +1653,19 @@ def nav_end_label(lang: str) -> str:
 
 def action_confirm_label(lang: str, key: str) -> str:
     return label_with_icon(ICON_CONFIRM, tr(lang, key))
+
+
+def start_workout_keyboard(lang: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton(tr(lang, "start_new_workout"), callback_data=CB_START_WORKOUT)]]
+    )
+
+
+async def send_next_workout_prompt(message, lang: str) -> None:
+    await message.reply_text(
+        tr(lang, "next_workout_prompt"),
+        reply_markup=start_workout_keyboard(lang),
+    )
 
 
 def workout_mode_keyboard(lang: str) -> InlineKeyboardMarkup:
@@ -1891,7 +1930,7 @@ def reps_keyboard(current_rep: int, lang: str) -> InlineKeyboardMarkup:
 
 
 def weight_adjust_keyboard(
-    can_copy_prev: bool,
+    current_weight: float,
     body_weight_kg: Optional[float],
     allow_bodyweight_button: bool,
     lang: str,
@@ -1911,8 +1950,7 @@ def weight_adjust_keyboard(
             InlineKeyboardButton("-1", callback_data=f"{CB_WADJ_PREFIX}-1"),
         ],
     ]
-    if can_copy_prev:
-        rows.append([InlineKeyboardButton(tr(lang, "use_prev_weight"), callback_data=CB_WCOPY)])
+    rows.append([InlineKeyboardButton(f"\U0001F512 Current: {current_weight:.2f} kg", callback_data="noop")])
     if allow_bodyweight_button and body_weight_kg is not None:
         rows.append([InlineKeyboardButton(label_with_icon(ICON_BODYWEIGHT_MAN, tr(lang, "use_body_weight")), callback_data=CB_WBODY)])
     rows.append([InlineKeyboardButton(action_confirm_label(lang, "confirm_weight"), callback_data=CB_WCONFIRM)])
@@ -1939,8 +1977,8 @@ def reps_prompt_text(lang: str, set_no: int, total_sets: int, current_rep: int) 
 def post_exercise_keyboard(lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton(label_with_icon(ICON_EXERCISE, tr(lang, "add_another")), callback_data=CB_NEXT_EXERCISE)],
-            [InlineKeyboardButton(label_with_icon(ICON_EXERCISE, tr(lang, "replace_exercise")), callback_data=CB_REPLACE_EXERCISE)],
+            [InlineKeyboardButton(label_with_icon(ICON_BACK, tr(lang, "add_another")), callback_data=CB_NEXT_EXERCISE)],
+            [InlineKeyboardButton(label_with_icon(ICON_REFRESH, tr(lang, "replace_exercise")), callback_data=CB_REPLACE_EXERCISE)],
             [InlineKeyboardButton(nav_end_label(lang), callback_data=CB_FINISH_SESSION)],
         ]
     )
@@ -2010,6 +2048,8 @@ async def language_select_cb(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     await query.edit_message_text(tr(lang, "language_saved"))
     await query.message.reply_text(welcome_text(context, user_id, lang))
+    if query.message:
+        await send_next_workout_prompt(query.message, lang)
 
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -2024,6 +2064,7 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     schedule_user_reminder(context.application, user_id, update.effective_chat.id)
     await set_chat_commands_for_language(context.bot, update.effective_chat.id, lang)
     await update.effective_message.reply_text(welcome_text(context, user_id, lang))
+    await send_next_workout_prompt(update.effective_message, lang)
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -2034,6 +2075,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not lang:
         return
     await update.effective_message.reply_text(f"{tr(lang, 'help')}\n{tr(lang, 'help_extra')}")
+    await send_next_workout_prompt(update.effective_message, lang)
 
 
 async def workout_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -2053,6 +2095,31 @@ async def workout_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     context.user_data.pop("workout", None)
 
     await update.effective_message.reply_text(
+        tr(lang, "choose_workout_mode"),
+        reply_markup=workout_mode_keyboard(lang),
+    )
+    return SELECT_MODE
+
+
+async def start_workout_button_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+
+    user_id = ensure_registered(update, context)
+    if user_id is None:
+        return ConversationHandler.END
+    lang = await ensure_language_selected(update, context, user_id)
+    if not lang:
+        return ConversationHandler.END
+
+    db = get_db(context)
+    active = db.get_active_session(user_id)
+    if active and query.message:
+        db.close_session(int(active["id"]), "cancelled")
+        await query.message.reply_text(tr(lang, "closed_unfinished"))
+
+    context.user_data.pop("workout", None)
+    await query.edit_message_text(
         tr(lang, "choose_workout_mode"),
         reply_markup=workout_mode_keyboard(lang),
     )
@@ -2654,7 +2721,7 @@ async def reps_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await query.message.reply_text(
         weight_prompt_text(set_no, sets_target, current_weight),
         reply_markup=weight_adjust_keyboard(
-            can_copy_prev=len(prev_weights) > 0,
+            current_weight=current_weight,
             body_weight_kg=workout.get("body_weight_kg"),
             allow_bodyweight_button=bool(context.application.bot_data.get("has_bodyweight_pdf")),
             lang=lang,
@@ -2678,6 +2745,8 @@ async def weight_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return await finish_workout(update, context)
     if data == CB_BACK_EXERCISE:
         return await back_to_exercise_list(update, context, lang)
+    if data == "noop":
+        return EX_WEIGHT
 
     sets_target = int(workout.get("sets_target", 0))
     reps_list: List[int] = list(workout.get("reps_list", []))
@@ -2700,24 +2769,7 @@ async def weight_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await query.edit_message_text(
             weight_prompt_text(set_no, sets_target, current_weight),
             reply_markup=weight_adjust_keyboard(
-                can_copy_prev=len(weights_list) > 0,
-                body_weight_kg=workout.get("body_weight_kg"),
-                allow_bodyweight_button=bool(context.application.bot_data.get("has_bodyweight_pdf")),
-                lang=lang,
-            ),
-        )
-        return EX_WEIGHT
-
-    if data == CB_WCOPY:
-        if not weights_list:
-            await query.answer(tr(lang, "no_prev_weight"), show_alert=True)
-            return EX_WEIGHT
-        current_weight = clamp_weight_kg(weights_list[-1])
-        workout["current_weight"] = current_weight
-        await query.edit_message_text(
-            weight_prompt_text(set_no, sets_target, current_weight),
-            reply_markup=weight_adjust_keyboard(
-                can_copy_prev=True,
+                current_weight=current_weight,
                 body_weight_kg=workout.get("body_weight_kg"),
                 allow_bodyweight_button=bool(context.application.bot_data.get("has_bodyweight_pdf")),
                 lang=lang,
@@ -2735,7 +2787,7 @@ async def weight_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await query.edit_message_text(
             weight_prompt_text(set_no, sets_target, current_weight),
             reply_markup=weight_adjust_keyboard(
-                can_copy_prev=len(weights_list) > 0,
+                current_weight=current_weight,
                 body_weight_kg=workout.get("body_weight_kg"),
                 allow_bodyweight_button=bool(context.application.bot_data.get("has_bodyweight_pdf")),
                 lang=lang,
@@ -2919,6 +2971,7 @@ async def finish_workout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         and int(session["warmup_done"] or 0) == 1
         and float(session["warmup_minutes"] or 0.0) > 0
     )
+    count_display = count + (1 if is_running_completed else 0)
 
     if count > 0 or is_running_completed:
         db.close_session(session_id, "completed")
@@ -2940,7 +2993,14 @@ async def finish_workout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 delta=body_weight_change_text(lang, current_bw, previous_bw),
             )
         recent = recent_groups_text(db, user.id, lang)
-        text = tr(lang, "workout_finish_free", count=count, volume=total_volume, warmup_line=warmup_line, recent=recent)
+        text = tr(
+            lang,
+            "workout_finish_free",
+            count=count_display,
+            volume=total_volume,
+            warmup_line=warmup_line,
+            recent=recent,
+        )
         text += body_weight_line
         now = now_utc()
         week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -2967,9 +3027,15 @@ async def finish_workout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text(text)
+        await update.callback_query.edit_message_text(
+            text,
+            reply_markup=start_workout_keyboard(lang),
+        )
     else:
-        await update.effective_message.reply_text(text)
+        await update.effective_message.reply_text(
+            text,
+            reply_markup=start_workout_keyboard(lang),
+        )
     return ConversationHandler.END
 
 
@@ -2996,6 +3062,7 @@ async def last_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     rows = db.get_last_completed_workouts(user_id=user_id, limit=4)
     if not rows:
         await update.effective_message.reply_text(tr(lang, "no_last_workouts"))
+        await send_next_workout_prompt(update.effective_message, lang)
         return
 
     lines = [tr(lang, "last_header")]
@@ -3020,6 +3087,7 @@ async def last_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             )
         )
     await update.effective_message.reply_text("\n".join(lines))
+    await send_next_workout_prompt(update.effective_message, lang)
 
 
 async def exlist_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -3037,6 +3105,7 @@ async def exlist_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     zip_bytes, image_count = build_exercise_list_zip(catalog)
     if not zip_bytes or image_count <= 0:
         await update.effective_message.reply_text(tr(lang, "no_exercise_files"))
+        await send_next_workout_prompt(update.effective_message, lang)
         return
 
     file_name = "Exercise_List.zip"
@@ -3044,6 +3113,7 @@ async def exlist_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         document=InputFile(io.BytesIO(zip_bytes), filename=file_name),
         caption=tr(lang, "exercise_list_caption", file_name=file_name),
     )
+    await send_next_workout_prompt(update.effective_message, lang)
 
 
 async def history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -3058,6 +3128,7 @@ async def history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     rows = db.get_history_rows(user_id)
     if not rows:
         await update.effective_message.reply_text(tr(lang, "no_history"))
+        await send_next_workout_prompt(update.effective_message, lang)
         return
 
     output = io.StringIO()
@@ -3106,6 +3177,7 @@ async def history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         document=InputFile(io.BytesIO(csv_bytes), filename=filename),
         caption=tr(lang, "history_caption"),
     )
+    await send_next_workout_prompt(update.effective_message, lang)
 
 
 def render_group_volume_lines(group_volumes: Dict[str, float], lang: str) -> str:
@@ -3142,6 +3214,7 @@ async def today_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         group_lines=render_group_volume_lines(summary["group_volumes"], lang),
     )
     await update.effective_message.reply_text(text)
+    await send_next_workout_prompt(update.effective_message, lang)
 
 
 async def thisweek_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -3172,6 +3245,7 @@ async def thisweek_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         group_lines=render_group_volume_lines(summary["group_volumes"], lang),
     )
     await update.effective_message.reply_text(text)
+    await send_next_workout_prompt(update.effective_message, lang)
 
 
 async def month_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -3186,12 +3260,14 @@ async def month_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     now = now_utc()
     if len(args) > 1:
         await update.effective_message.reply_text(tr(lang, "month_usage"))
+        await send_next_workout_prompt(update.effective_message, lang)
         return
 
     if args:
         parsed = parse_month_token(args[0], now.year)
         if parsed is None:
             await update.effective_message.reply_text(tr(lang, "month_invalid"))
+            await send_next_workout_prompt(update.effective_message, lang)
             return
         year, month = parsed
     else:
@@ -3221,6 +3297,7 @@ async def month_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         volume=summary["total_volume"],
     )
     await update.effective_message.reply_text(text)
+    await send_next_workout_prompt(update.effective_message, lang)
 
 
 async def period_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -3234,18 +3311,21 @@ async def period_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     args = context.args or []
     if len(args) != 2:
         await update.effective_message.reply_text(tr(lang, "period_usage"))
+        await send_next_workout_prompt(update.effective_message, lang)
         return
 
     now = now_utc()
     start_date = parse_user_date_token(args[0], now.year)
     if start_date is None:
         await update.effective_message.reply_text(tr(lang, "period_invalid"))
+        await send_next_workout_prompt(update.effective_message, lang)
         return
 
     end_default_year = start_date.year
     end_date = parse_user_date_token(args[1], end_default_year)
     if end_date is None:
         await update.effective_message.reply_text(tr(lang, "period_invalid"))
+        await send_next_workout_prompt(update.effective_message, lang)
         return
 
     if end_date < start_date and re.fullmatch(r"\d{1,2}\.\d{1,2}", args[1].strip()):
@@ -3253,10 +3333,12 @@ async def period_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             end_date = date(start_date.year + 1, end_date.month, end_date.day)
         except ValueError:
             await update.effective_message.reply_text(tr(lang, "period_invalid"))
+            await send_next_workout_prompt(update.effective_message, lang)
             return
 
     if end_date < start_date:
         await update.effective_message.reply_text(tr(lang, "period_end_before_start"))
+        await send_next_workout_prompt(update.effective_message, lang)
         return
 
     start_dt = datetime.combine(start_date, time.min, tzinfo=timezone.utc)
@@ -3278,6 +3360,7 @@ async def period_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         volume=summary["total_volume"],
     )
     await update.effective_message.reply_text(text)
+    await send_next_workout_prompt(update.effective_message, lang)
 
 
 async def pr_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -3292,12 +3375,14 @@ async def pr_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     records = db.get_personal_records(user_id)
     if not records:
         await update.effective_message.reply_text(tr(lang, "no_prs"))
+        await send_next_workout_prompt(update.effective_message, lang)
         return
 
     lines = [tr(lang, "pr_header")]
     for r in records:
         lines.append(tr(lang, "pr_line", name=translate_exercise_name(lang, str(r["name"])), weight=float(r["max_weight"])))
     await update.effective_message.reply_text("\n".join(lines))
+    await send_next_workout_prompt(update.effective_message, lang)
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -3377,7 +3462,10 @@ def build_application() -> Application:
         logger.info("Bodyweight exercise PDF detected: %s", BODYWEIGHT_EXERCISE_PDF)
 
     workout_conv = ConversationHandler(
-        entry_points=[CommandHandler(["workout", "latihan", "tren", "training"], workout_cmd)],
+        entry_points=[
+            CommandHandler(["workout", "latihan", "tren", "training"], workout_cmd),
+            CallbackQueryHandler(start_workout_button_cb, pattern=r"^start_workout$"),
+        ],
         states={
             SELECT_MODE: [
                 CallbackQueryHandler(
@@ -3432,7 +3520,7 @@ def build_application() -> Application:
             EX_WEIGHT: [
                 CallbackQueryHandler(
                     weight_choice_cb,
-                    pattern=r"^(wadj:[+-]?(?:\d+(?:\.\d+)?)|wconfirm|wcopy|wbody|back_exercise|finish_session)$",
+                    pattern=r"^(wadj:[+-]?(?:\d+(?:\.\d+)?)|wconfirm|wbody|noop|back_exercise|finish_session)$",
                 ),
             ],
             POST_ACTION: [
