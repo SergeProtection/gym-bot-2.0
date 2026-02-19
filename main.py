@@ -125,6 +125,25 @@ ICON_WEIGHT = "\U0001F7E0"
 ICON_BACK = "\u2B05\uFE0F"
 ICON_STOP = "\U0001F6D1"
 ICON_CONFIRM = "\u2705"
+LIST_ROW_ICONS = ("\U0001F7E9", "\U0001F7E6")  # light green, light blue
+SETS_NUMBER_ICONS = (
+    "\U0001F7E5",  # red
+    "\U0001F7E0",  # orange
+    "\U0001F7E1",  # yellow
+    "\U0001F7E2",  # green
+    "\U0001F535",  # blue
+    "\U0001F7E3",  # purple
+)
+SETS_ADJUST_ICONS = ("\U0001F7E4", "\u2B1C")  # brown, white
+ICON_CURRENT_VALUE = "\U0001F518"  # radio button
+REPS_ADJUST_ICONS = (
+    "\U0001F7E5",  # red
+    "\U0001F7E0",  # orange
+    "\U0001F7E1",  # yellow
+    "\U0001F7E2",  # green
+    "\U0001F535",  # blue
+    "\U0001F7E3",  # purple
+)
 
 SUPPORTED_LANGS = ("en", "id", "ru", "de")
 LANG_LABELS = {
@@ -1466,6 +1485,10 @@ def label_with_icon(icon: str, text: str) -> str:
     return f"{icon} {text}"
 
 
+def alternating_row_icon(index: int) -> str:
+    return LIST_ROW_ICONS[index % len(LIST_ROW_ICONS)]
+
+
 def nav_back_label(lang: str) -> str:
     return label_with_icon(ICON_BACK, tr(lang, "back_exercise"))
 
@@ -1501,11 +1524,11 @@ def find_exercise_in_catalog(
 
 def group_keyboard(muscle_groups: List[str], lang: str) -> InlineKeyboardMarkup:
     rows = []
-    for group in muscle_groups:
+    for idx, group in enumerate(muscle_groups):
         rows.append(
             [
                 InlineKeyboardButton(
-                    label_with_icon(ICON_GROUP, translate_group_name(lang, group)),
+                    label_with_icon(alternating_row_icon(idx), translate_group_name(lang, group)),
                     callback_data=f"{CB_GROUP_PREFIX}{group}",
                 )
             ]
@@ -1578,7 +1601,7 @@ def exercise_keyboard(exercises: List[ExerciseOption], lang: str) -> InlineKeybo
     rows = [
         [
             InlineKeyboardButton(
-                f"{ICON_EXERCISE} {idx + 1}. {translate_exercise_name(lang, name)}",
+                f"{alternating_row_icon(idx)} {idx + 1}. {translate_exercise_name(lang, name)}",
                 callback_data=f"{CB_EX_PREFIX}{idx}",
             )
         ]
@@ -1606,20 +1629,20 @@ def sets_keyboard(current_sets: int, lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton(f"{ICON_SETS} 1", callback_data=f"{CB_SETS_PREFIX}1"),
-                InlineKeyboardButton(f"{ICON_SETS} 2", callback_data=f"{CB_SETS_PREFIX}2"),
-                InlineKeyboardButton(f"{ICON_SETS} 3", callback_data=f"{CB_SETS_PREFIX}3"),
+                InlineKeyboardButton(label_with_icon(SETS_NUMBER_ICONS[0], "1"), callback_data=f"{CB_SETS_PREFIX}1"),
+                InlineKeyboardButton(label_with_icon(SETS_NUMBER_ICONS[1], "2"), callback_data=f"{CB_SETS_PREFIX}2"),
+                InlineKeyboardButton(label_with_icon(SETS_NUMBER_ICONS[2], "3"), callback_data=f"{CB_SETS_PREFIX}3"),
             ],
             [
-                InlineKeyboardButton(f"{ICON_SETS} 4", callback_data=f"{CB_SETS_PREFIX}4"),
-                InlineKeyboardButton(f"{ICON_SETS} 5", callback_data=f"{CB_SETS_PREFIX}5"),
-                InlineKeyboardButton(f"{ICON_SETS} 6", callback_data=f"{CB_SETS_PREFIX}6"),
+                InlineKeyboardButton(label_with_icon(SETS_NUMBER_ICONS[3], "4"), callback_data=f"{CB_SETS_PREFIX}4"),
+                InlineKeyboardButton(label_with_icon(SETS_NUMBER_ICONS[4], "5"), callback_data=f"{CB_SETS_PREFIX}5"),
+                InlineKeyboardButton(label_with_icon(SETS_NUMBER_ICONS[5], "6"), callback_data=f"{CB_SETS_PREFIX}6"),
             ],
             [
-                InlineKeyboardButton(f"{ICON_SETS} -1", callback_data=f"{CB_SETS_ADJ_PREFIX}-1"),
-                InlineKeyboardButton(f"{ICON_SETS} +1", callback_data=f"{CB_SETS_ADJ_PREFIX}+1"),
+                InlineKeyboardButton(label_with_icon(SETS_ADJUST_ICONS[0], "-1"), callback_data=f"{CB_SETS_ADJ_PREFIX}-1"),
+                InlineKeyboardButton(label_with_icon(SETS_ADJUST_ICONS[1], "+1"), callback_data=f"{CB_SETS_ADJ_PREFIX}+1"),
             ],
-            [InlineKeyboardButton(label_with_icon(ICON_SETS, tr(lang, "sets_current", value=current_sets)), callback_data="noop")],
+            [InlineKeyboardButton(label_with_icon(ICON_CURRENT_VALUE, tr(lang, "sets_current", value=current_sets)), callback_data="noop")],
             [InlineKeyboardButton(action_confirm_label(lang, "confirm_sets"), callback_data=CB_SETS_CONFIRM)],
             [InlineKeyboardButton(nav_back_label(lang), callback_data=CB_BACK_EXERCISE)],
             [InlineKeyboardButton(nav_end_label(lang), callback_data=CB_FINISH_SESSION)],
@@ -1631,16 +1654,16 @@ def reps_keyboard(current_rep: int, lang: str) -> InlineKeyboardMarkup:
     current_rep = clamp_reps(current_rep)
     rows = [
         [
-            InlineKeyboardButton(f"{ICON_REPS} -10", callback_data=f"{CB_REP_ADJ_PREFIX}-10"),
-            InlineKeyboardButton(f"{ICON_REPS} -5", callback_data=f"{CB_REP_ADJ_PREFIX}-5"),
-            InlineKeyboardButton(f"{ICON_REPS} -1", callback_data=f"{CB_REP_ADJ_PREFIX}-1"),
+            InlineKeyboardButton(label_with_icon(REPS_ADJUST_ICONS[0], "-10"), callback_data=f"{CB_REP_ADJ_PREFIX}-10"),
+            InlineKeyboardButton(label_with_icon(REPS_ADJUST_ICONS[1], "-5"), callback_data=f"{CB_REP_ADJ_PREFIX}-5"),
+            InlineKeyboardButton(label_with_icon(REPS_ADJUST_ICONS[2], "-1"), callback_data=f"{CB_REP_ADJ_PREFIX}-1"),
         ],
         [
-            InlineKeyboardButton(f"{ICON_REPS} +1", callback_data=f"{CB_REP_ADJ_PREFIX}+1"),
-            InlineKeyboardButton(f"{ICON_REPS} +5", callback_data=f"{CB_REP_ADJ_PREFIX}+5"),
-            InlineKeyboardButton(f"{ICON_REPS} +10", callback_data=f"{CB_REP_ADJ_PREFIX}+10"),
+            InlineKeyboardButton(label_with_icon(REPS_ADJUST_ICONS[3], "+1"), callback_data=f"{CB_REP_ADJ_PREFIX}+1"),
+            InlineKeyboardButton(label_with_icon(REPS_ADJUST_ICONS[4], "+5"), callback_data=f"{CB_REP_ADJ_PREFIX}+5"),
+            InlineKeyboardButton(label_with_icon(REPS_ADJUST_ICONS[5], "+10"), callback_data=f"{CB_REP_ADJ_PREFIX}+10"),
         ],
-        [InlineKeyboardButton(label_with_icon(ICON_REPS, tr(lang, "reps_current", value=current_rep)), callback_data="noop")],
+        [InlineKeyboardButton(label_with_icon(ICON_CURRENT_VALUE, tr(lang, "reps_current", value=current_rep)), callback_data="noop")],
         [InlineKeyboardButton(action_confirm_label(lang, "confirm_reps"), callback_data=CB_REP_CONFIRM)],
         [InlineKeyboardButton(nav_back_label(lang), callback_data=CB_BACK_EXERCISE)],
         [InlineKeyboardButton(nav_end_label(lang), callback_data=CB_FINISH_SESSION)],
