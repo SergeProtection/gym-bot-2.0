@@ -1507,11 +1507,16 @@ async def back_to_exercise_list(update: Update, context: ContextTypes.DEFAULT_TY
 
 def exercise_keyboard(exercises: List[ExerciseOption], lang: str) -> InlineKeyboardMarkup:
     rows = [
-        [InlineKeyboardButton(translate_exercise_name(lang, name), callback_data=f"{CB_EX_PREFIX}{idx}")]
+        [
+            InlineKeyboardButton(
+                f"{idx + 1}. {translate_exercise_name(lang, name)}",
+                callback_data=f"{CB_EX_PREFIX}{idx}",
+            )
+        ]
         for idx, (name, _) in enumerate(exercises)
     ]
-    rows.append([InlineKeyboardButton(tr(lang, "back_groups"), callback_data=CB_BACK_GROUPS)])
-    rows.append([InlineKeyboardButton(tr(lang, "end_workout"), callback_data=CB_FINISH_SESSION)])
+    rows.append([InlineKeyboardButton(f"⬅️ {tr(lang, 'back_groups')}", callback_data=CB_BACK_GROUPS)])
+    rows.append([InlineKeyboardButton(f"🛑 {tr(lang, 'end_workout')}", callback_data=CB_FINISH_SESSION)])
     return InlineKeyboardMarkup(rows)
 
 
