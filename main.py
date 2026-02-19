@@ -7,7 +7,7 @@ import re
 import sqlite3
 import zipfile
 from contextlib import closing
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -149,6 +149,8 @@ LANG_COMMAND_SETS: Dict[str, List[Tuple[str, str]]] = {
         ("history", "Export workout history"),
         ("today", "Today summary"),
         ("thisweek", "This week summary"),
+        ("month", "Monthly total summary"),
+        ("period", "Custom period summary"),
         ("pr", "Personal records"),
         ("help", "Show help"),
         ("cancel", "Cancel current flow"),
@@ -160,6 +162,8 @@ LANG_COMMAND_SETS: Dict[str, List[Tuple[str, str]]] = {
         ("riwayat", "Ekspor riwayat"),
         ("hariini", "Ringkasan hari ini"),
         ("mingguini", "Ringkasan minggu ini"),
+        ("bulan", "Ringkasan total bulanan"),
+        ("periode", "Ringkasan rentang tanggal"),
         ("rekor", "Rekor pribadi"),
         ("bantuan", "Tampilkan bantuan"),
         ("batal", "Batalkan alur saat ini"),
@@ -171,6 +175,8 @@ LANG_COMMAND_SETS: Dict[str, List[Tuple[str, str]]] = {
         ("istoriya", "Экспорт истории"),
         ("segodnya", "Итоги за сегодня"),
         ("nedelya", "Итоги недели"),
+        ("mesyac", "\u0418\u0442\u043e\u0433\u0438 \u0437\u0430 \u043c\u0435\u0441\u044f\u0446"),
+        ("period", "\u0418\u0442\u043e\u0433\u0438 \u0437\u0430 \u043f\u0435\u0440\u0438\u043e\u0434"),
         ("rekord", "Личные рекорды"),
         ("pomosh", "Показать помощь"),
         ("otmena", "Отменить текущий ввод"),
@@ -182,6 +188,8 @@ LANG_COMMAND_SETS: Dict[str, List[Tuple[str, str]]] = {
         ("verlauf", "Verlauf exportieren"),
         ("heute", "Heute Zusammenfassung"),
         ("woche", "Diese Woche Zusammenfassung"),
+        ("monat", "Monatsgesamtuebersicht"),
+        ("zeitraum", "Zeitraum-Zusammenfassung"),
         ("rekorde", "Persönliche Rekorde"),
         ("hilfe", "Hilfe anzeigen"),
         ("abbrechen", "Aktuellen Ablauf abbrechen"),
@@ -217,6 +225,7 @@ GROUP_TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "Calves": "Икры",
         "Chest": "Грудь",
         "Legs": "Ноги",
+        "Running": "\u0411\u0435\u0433",
         "Shoulders": "Плечи",
         "Triceps": "Трицепс",
     },
@@ -322,6 +331,7 @@ TR: Dict[str, Dict[str, str]] = {
         "welcome": "Welcome to GymBot.\nUse /workout to log a workout session.\nNext in your 4-day rotation: {next_group}\n\nCommands:\n/workout, /last, /history, /today, /thisweek, /pr, /help",
         "welcome_free_plan": "Welcome to GymBot.\nUse /workout to log a workout session.\nAvailable muscle groups: {groups}\nRecent muscle groups: {recent}\n\nCommands:\n/workout, /last, /history, /today, /thisweek, /pr, /help",
         "help": "/start - Register and initialize reminders\n/workout - Log a workout\n/last - Last 3 completed workouts\n/history - Export workout history CSV\n/today - Today summary stats\n/thisweek - Weekly volume by muscle group\n/pr - Personal records (max weight by exercise)\n/cancel - Cancel active workout conversation",
+        "help_extra": "/month [MM.YYYY] - Monthly totals\n/period <from> <to> - Custom period totals",
         "none_yet": "None yet",
         "skip_day": "Skip day",
         "end_workout": "End workout",
@@ -406,6 +416,13 @@ TR: Dict[str, Dict[str, str]] = {
         "body_weight_change_first": "first record",
         "today_summary": "Today Summary (UTC)\nCompleted workouts: {session_count}\nExercises logged: {exercise_count}\nTotal volume: {total_volume:.2f}\nWarm-up sessions: {warmup_count}\nWarm-up total: {warmup_minutes_total:.2f} min, {warmup_distance_total:.2f} km\nVolume by muscle group:\n{group_lines}",
         "week_summary": "This Week Summary (UTC)\nWeek: {start_date} to {end_date}\nCompleted workouts: {session_count}\nExercises logged: {exercise_count}\nTotal weekly volume: {total_volume:.2f}\nWarm-up sessions: {warmup_count}\nWarm-up total: {warmup_minutes_total:.2f} min, {warmup_distance_total:.2f} km\nWeekly volume by muscle group:\n{group_lines}",
+        "month_summary": "Month Summary (UTC)\nMonth: {month}\nCompleted workouts: {session_count}\nExercises logged: {exercise_count}\nRunning: {minutes:.2f} min, {distance:.2f} km\nTraining volume: {volume:.2f}",
+        "period_summary": "Period Summary (UTC)\nFrom: {start_date}\nTo: {end_date}\nCompleted workouts: {session_count}\nExercises logged: {exercise_count}\nRunning: {minutes:.2f} min, {distance:.2f} km\nTraining volume: {volume:.2f}",
+        "month_usage": "Usage: /month or /month MM.YYYY (example: /month 02.2026)",
+        "period_usage": "Usage: /period DD.MM DD.MM or /period DD.MM.YYYY DD.MM.YYYY\nExample: /period 1.1 23.2",
+        "month_invalid": "Invalid month format. Use MM.YYYY (example: 02.2026).",
+        "period_invalid": "Invalid date format. Use DD.MM or DD.MM.YYYY.",
+        "period_end_before_start": "End date must be on/after start date.",
         "no_prs": "No PRs yet. Log a workout with /workout.",
         "pr_header": "ðŸ† Personal Records (max weight by exercise):",
         "pr_line": "ðŸ’ª {name}: {weight:.2f} kg",
@@ -418,6 +435,8 @@ TR: Dict[str, Dict[str, str]] = {
         "body_weight_line": "\nBodyweight: {body_weight} ({delta})",
         "running_week_line": "\nRunning this week: {minutes:.2f} min, {distance:.2f} km",
         "running_month_line": "\nRunning this month: {minutes:.2f} min, {distance:.2f} km",
+        "volume_week_line": "\nTraining volume this week: {volume:.2f}",
+        "volume_month_line": "\nTraining volume this month: {volume:.2f}",
         "volume_total_line": "\nTotal training volume so far: {volume:.2f}",
         "skipped_day": "Skipped day recorded for {skipped}.\nNext scheduled group: {next_group}",
         "reminder_free": "GymBot reminder:\nTime to log your workout.\nRecent muscle groups: {recent}\nUse /workout to log your session.",
@@ -648,6 +667,52 @@ def clamp_warmup_minutes(value: float) -> float:
 
 def clamp_warmup_distance_km(value: float) -> float:
     return round(min(200.0, max(0.0, value)), 1)
+
+
+def parse_user_date_token(token: str, default_year: int) -> Optional[date]:
+    token = token.strip()
+    try:
+        if re.fullmatch(r"\d{4}-\d{1,2}-\d{1,2}", token):
+            return datetime.strptime(token, "%Y-%m-%d").date()
+
+        if re.fullmatch(r"\d{1,2}\.\d{1,2}(?:\.\d{2,4})?", token):
+            parts = token.split(".")
+            day = int(parts[0])
+            month = int(parts[1])
+            if len(parts) == 3:
+                year = int(parts[2])
+                if year < 100:
+                    year += 2000
+            else:
+                year = default_year
+            return datetime(year=year, month=month, day=day).date()
+    except ValueError:
+        return None
+    return None
+
+
+def parse_month_token(token: str, default_year: int) -> Optional[Tuple[int, int]]:
+    token = token.strip()
+    try:
+        if re.fullmatch(r"\d{1,2}\.\d{4}", token):
+            month_s, year_s = token.split(".")
+            month = int(month_s)
+            year = int(year_s)
+        elif re.fullmatch(r"\d{4}-\d{1,2}", token):
+            year_s, month_s = token.split("-")
+            month = int(month_s)
+            year = int(year_s)
+        elif re.fullmatch(r"\d{1,2}", token):
+            month = int(token)
+            year = default_year
+        else:
+            return None
+    except ValueError:
+        return None
+
+    if month < 1 or month > 12:
+        return None
+    return year, month
 
 
 def clamp_sets(value: int) -> int:
@@ -1966,7 +2031,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     lang = await ensure_language_selected(update, context, user_id)
     if not lang:
         return
-    await update.effective_message.reply_text(tr(lang, "help"))
+    await update.effective_message.reply_text(f"{tr(lang, 'help')}\n{tr(lang, 'help_extra')}")
 
 
 async def workout_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -2885,8 +2950,12 @@ async def finish_workout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             month_end = month_start.replace(month=month_start.month + 1)
         week_minutes, week_distance = db.get_running_totals(user.id, week_start, week_end)
         month_minutes, month_distance = db.get_running_totals(user.id, month_start, month_end)
+        week_summary = db.get_summary(user.id, week_start, week_end)
+        month_summary = db.get_summary(user.id, month_start, month_end)
         text += tr(lang, "running_week_line", minutes=week_minutes, distance=week_distance)
         text += tr(lang, "running_month_line", minutes=month_minutes, distance=month_distance)
+        text += tr(lang, "volume_week_line", volume=week_summary["total_volume"])
+        text += tr(lang, "volume_month_line", volume=month_summary["total_volume"])
         text += tr(lang, "volume_total_line", volume=db.get_total_training_volume(user.id))
     else:
         db.close_session(session_id, "cancelled")
@@ -3104,6 +3173,112 @@ async def thisweek_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.effective_message.reply_text(text)
 
 
+async def month_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = ensure_registered(update, context)
+    if user_id is None:
+        return
+    lang = await ensure_language_selected(update, context, user_id)
+    if not lang:
+        return
+
+    args = context.args or []
+    now = now_utc()
+    if len(args) > 1:
+        await update.effective_message.reply_text(tr(lang, "month_usage"))
+        return
+
+    if args:
+        parsed = parse_month_token(args[0], now.year)
+        if parsed is None:
+            await update.effective_message.reply_text(tr(lang, "month_invalid"))
+            return
+        year, month = parsed
+    else:
+        year, month = now.year, now.month
+
+    start_date = date(year, month, 1)
+    if month == 12:
+        end_date = date(year + 1, 1, 1)
+    else:
+        end_date = date(year, month + 1, 1)
+
+    start_dt = datetime.combine(start_date, time.min, tzinfo=timezone.utc)
+    end_dt = datetime.combine(end_date, time.min, tzinfo=timezone.utc)
+
+    db = get_db(context)
+    summary = db.get_summary(user_id, start_dt, end_dt)
+    run_minutes, run_distance = db.get_running_totals(user_id, start_dt, end_dt)
+
+    text = tr(
+        lang,
+        "month_summary",
+        month=f"{year:04d}-{month:02d}",
+        session_count=summary["session_count"],
+        exercise_count=summary["exercise_count"],
+        minutes=run_minutes,
+        distance=run_distance,
+        volume=summary["total_volume"],
+    )
+    await update.effective_message.reply_text(text)
+
+
+async def period_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = ensure_registered(update, context)
+    if user_id is None:
+        return
+    lang = await ensure_language_selected(update, context, user_id)
+    if not lang:
+        return
+
+    args = context.args or []
+    if len(args) != 2:
+        await update.effective_message.reply_text(tr(lang, "period_usage"))
+        return
+
+    now = now_utc()
+    start_date = parse_user_date_token(args[0], now.year)
+    if start_date is None:
+        await update.effective_message.reply_text(tr(lang, "period_invalid"))
+        return
+
+    end_default_year = start_date.year
+    end_date = parse_user_date_token(args[1], end_default_year)
+    if end_date is None:
+        await update.effective_message.reply_text(tr(lang, "period_invalid"))
+        return
+
+    if end_date < start_date and re.fullmatch(r"\d{1,2}\.\d{1,2}", args[1].strip()):
+        try:
+            end_date = date(start_date.year + 1, end_date.month, end_date.day)
+        except ValueError:
+            await update.effective_message.reply_text(tr(lang, "period_invalid"))
+            return
+
+    if end_date < start_date:
+        await update.effective_message.reply_text(tr(lang, "period_end_before_start"))
+        return
+
+    start_dt = datetime.combine(start_date, time.min, tzinfo=timezone.utc)
+    end_dt = datetime.combine(end_date + timedelta(days=1), time.min, tzinfo=timezone.utc)
+
+    db = get_db(context)
+    summary = db.get_summary(user_id, start_dt, end_dt)
+    run_minutes, run_distance = db.get_running_totals(user_id, start_dt, end_dt)
+
+    text = tr(
+        lang,
+        "period_summary",
+        start_date=start_date.isoformat(),
+        end_date=end_date.isoformat(),
+        session_count=summary["session_count"],
+        exercise_count=summary["exercise_count"],
+        minutes=run_minutes,
+        distance=run_distance,
+        volume=summary["total_volume"],
+    )
+    await update.effective_message.reply_text(text)
+
+
 async def pr_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = ensure_registered(update, context)
     if user_id is None:
@@ -3277,6 +3452,8 @@ def build_application() -> Application:
     app.add_handler(CommandHandler(["history", "riwayat", "istoriya", "verlauf"], history_cmd))
     app.add_handler(CommandHandler(["today", "hariini", "segodnya", "heute"], today_cmd))
     app.add_handler(CommandHandler(["thisweek", "mingguini", "nedelya", "woche"], thisweek_cmd))
+    app.add_handler(CommandHandler(["month", "bulan", "mesyac", "monat"], month_cmd))
+    app.add_handler(CommandHandler(["period", "periode", "zeitraum"], period_cmd))
     app.add_handler(CommandHandler(["pr", "rekor", "rekord", "rekorde"], pr_cmd))
     app.add_handler(CommandHandler(["cancel", "batal", "otmena", "abbrechen"], cancel_cmd))
     app.add_handler(workout_conv)
