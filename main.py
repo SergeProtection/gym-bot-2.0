@@ -331,7 +331,7 @@ TR: Dict[str, Dict[str, str]] = {
         "select_language": "Choose your language:",
         "language_saved": "Language saved.",
         "welcome": "Welcome to GymBot.\nUse /workout to log a workout session.\nNext in your 4-day rotation: {next_group}\n\nCommands:\n/workout, /last, /history, /today, /thisweek, /pr, /help",
-        "welcome_free_plan": "Welcome to GymBot.\nUse /workout to log a workout session.\nAvailable muscle groups: {groups}\nRecent workout: {recent}\n\nCommands:\n/workout, /last, /history, /today, /thisweek, /pr, /help",
+        "welcome_free_plan": "Welcome to GymBot.\nUse /workout to log a workout session.\nAvailable muscle groups: {groups}\nRecent workout: {recent}\n\n{commands}",
         "help": "/start - Register and initialize reminders\n/workout - Log a workout\n/last - Last 3 completed workouts\n/history - Export workout history CSV\n/today - Today summary stats\n/thisweek - Weekly volume by muscle group\n/pr - Personal records (max weight by exercise)\n/cancel - Cancel active workout conversation",
         "help_extra": "/month [MM.YYYY] - Monthly totals\n/period <from> <to> - Custom period totals",
         "start_new_workout": "Start new workout",
@@ -372,7 +372,7 @@ TR: Dict[str, Dict[str, str]] = {
         "confirm_distance": "Confirm distance",
         "invalid_option_restart": "Invalid option. Use /workout to restart.",
         "warmup_format_error": "Please send warm-up like: 5 1 (minutes distance_km)",
-        "warmup_saved": "Warm-up saved: {minutes:.2f} min, {distance:.2f} km.",
+        "warmup_saved": "Run saved: {minutes}, {distance:.2f} km.",
         "invalid_exercise_restart": "Invalid exercise selection. Use /workout to restart.",
         "exercise_not_found": "Exercise not found. Use /workout to restart.",
         "exercise_selected": "Exercise selected: {exercise}",
@@ -385,11 +385,17 @@ TR: Dict[str, Dict[str, str]] = {
         "choose_reps": "Set {set_no}/{sets}: choose reps (1-100)",
         "reps_current": "Current reps: {value}",
         "confirm_reps": "Confirm reps",
+        "choose_time": "Set {set_no}/{sets}: choose hold time",
+        "time_current": "Current time: {value}",
+        "confirm_time": "Confirm time",
         "invalid_reps_restart": "Invalid reps selection. Use /workout to restart.",
+        "invalid_time_restart": "Invalid time selection. Use /workout to restart.",
         "reps_range": "Reps must be between 1 and 100.",
+        "time_range": "Time must be between 00:01 and 01:00:00.",
         "sets_missing_restart": "Sets are missing. Use /workout to restart.",
         "all_sets_entered_restart": "All sets already entered. Use /workout to restart.",
         "set_reps_selected": "Set {set_no}/{sets} reps selected: {rep}",
+        "set_time_selected": "Set {set_no}/{sets} hold time selected: {value}",
         "set_context_missing": "Set context missing. Use /workout to restart.",
         "invalid_weight_adjustment": "Invalid weight adjustment.",
         "no_prev_weight": "No previous set weight yet.",
@@ -435,7 +441,7 @@ TR: Dict[str, Dict[str, str]] = {
         "workout_finish_empty": "Workout ended with no exercises saved.\nNext scheduled group remains: {next_group}",
         "workout_finish_free": "Workout ended.\nExercises saved: {count}\nTotal volume: {volume:.2f}{warmup_line}\nRecent workout: {recent}",
         "workout_finish_empty_free": "Workout ended with no exercises saved.\nRecent workout: {recent}",
-        "warmup_line": "\nRun: {minutes:.2f} min, {distance:.2f} km",
+        "warmup_line": "\nRun: {minutes}, {distance:.2f} km",
         "body_weight_line": "\nBodyweight: {body_weight} ({delta})",
         "running_week_line": "\nRunning this week: {minutes:.2f} min, {distance:.2f} km",
         "running_month_line": "\nRunning this month: {minutes:.2f} min, {distance:.2f} km",
@@ -507,7 +513,7 @@ TR: Dict[str, Dict[str, str]] = {
     "de": {
         "select_language": "Wähle deine Sprache:",
         "language_saved": "Sprache gespeichert.",
-        "welcome_free_plan": "Willkommen bei GymBot.\nNutze /training für dein Workout.\nVerfügbare Muskelgruppen: {groups}\nLetztes Workout: {recent}\n\nBefehle:\n/training, /letzte, /verlauf, /heute, /woche, /rekorde, /hilfe",
+        "welcome_free_plan": "Willkommen bei GymBot.\nNutze /training für dein Workout.\nVerfügbare Muskelgruppen: {groups}\nLetztes Workout: {recent}\n\n{commands}",
         "help": "/start - Registrierung und Erinnerungen\n/training - Workout protokollieren\n/letzte - Letzte 3 abgeschlossene Workouts\n/verlauf - Verlauf als CSV exportieren\n/heute - Tageszusammenfassung\n/woche - Wochenzusammenfassung\n/rekorde - Persönliche Rekorde\n/abbrechen - Aktuellen Ablauf abbrechen",
         "start_new_workout": "Neues Workout starten",
         "next_workout_prompt": "Bereit für das nächste Workout?",
@@ -539,7 +545,7 @@ TR: Dict[str, Dict[str, str]] = {
         "send_warmup": "Sende Warm-up als: minuten distanz_km\nBeispiel: 5 1",
         "invalid_option_restart": "Ungültige Option. Nutze /training für einen Neustart.",
         "warmup_format_error": "Bitte sende Warm-up im Format: 5 1 (minuten distanz_km)",
-        "warmup_saved": "Warm-up gespeichert: {minutes:.2f} min, {distance:.2f} km.",
+        "warmup_saved": "Run gespeichert: {minutes}, {distance:.2f} km.",
         "invalid_exercise_restart": "Ungültige Übungsauswahl. Nutze /training für einen Neustart.",
         "exercise_not_found": "Übung nicht gefunden. Nutze /training für einen Neustart.",
         "exercise_selected": "Übung ausgewählt: {exercise}",
@@ -552,11 +558,17 @@ TR: Dict[str, Dict[str, str]] = {
         "choose_reps": "Satz {set_no}/{sets}: Wähle Wiederholungen (1-100)",
         "reps_current": "Aktuelle Wiederholungen: {value}",
         "confirm_reps": "Wiederholungen bestätigen",
+        "choose_time": "Satz {set_no}/{sets}: Haltezeit wählen",
+        "time_current": "Aktuelle Zeit: {value}",
+        "confirm_time": "Zeit bestätigen",
         "invalid_reps_restart": "Ungültige Wiederholungen. Nutze /training für einen Neustart.",
+        "invalid_time_restart": "Ungültige Zeitauswahl. Nutze /training für einen Neustart.",
         "reps_range": "Wiederholungen müssen zwischen 1 und 100 liegen.",
+        "time_range": "Zeit muss zwischen 00:01 und 01:00:00 liegen.",
         "sets_missing_restart": "Sätze fehlen. Nutze /training für einen Neustart.",
         "all_sets_entered_restart": "Alle Sätze wurden bereits erfasst. Nutze /training für einen Neustart.",
         "set_reps_selected": "Satz {set_no}/{sets} Wiederholungen gespeichert: {rep}",
+        "set_time_selected": "Satz {set_no}/{sets} Haltezeit gespeichert: {value}",
         "set_context_missing": "Satzkontext fehlt. Nutze /training für einen Neustart.",
         "invalid_weight_adjustment": "Ungültige Gewichtsanpassung.",
         "no_prev_weight": "Noch kein vorheriges Satzgewicht vorhanden.",
@@ -592,7 +604,7 @@ TR: Dict[str, Dict[str, str]] = {
         "pr_line": "{name}: {weight:.2f} kg",
         "workout_finish_free": "Training beendet.\nGespeicherte Übungen: {count}\nGesamtvolumen: {volume:.2f}{warmup_line}\nLetztes Workout: {recent}",
         "workout_finish_empty_free": "Training beendet ohne gespeicherte Übungen.\nLetztes Workout: {recent}",
-        "warmup_line": "\nRun: {minutes:.2f} min, {distance:.2f} km",
+        "warmup_line": "\nRun: {minutes}, {distance:.2f} km",
         "body_weight_line": "\nKörpergewicht: {body_weight} ({delta})",
         "reminder_free": "GymBot Erinnerung:\nZeit für dein Training.\nLetztes Workout: {recent}\nNutze /training für dein Workout.",
     },
@@ -656,7 +668,8 @@ def parse_warmup_input(text: str) -> Optional[Tuple[float, float]]:
 
     if minutes <= 0 or distance < 0:
         return None
-    return round(minutes, 2), round(distance, 3)
+    minutes = round(minutes * 60.0) / 60.0
+    return minutes, round(distance, 1)
 
 
 def clamp_weight_kg(value: float) -> float:
@@ -668,11 +681,39 @@ def clamp_body_weight_kg(value: float) -> float:
 
 
 def clamp_warmup_minutes(value: float) -> float:
-    return round(min(300.0, max(0.0, value)), 2)
+    bounded = min(300.0, max(0.0, value))
+    return round(bounded * 60.0) / 60.0
 
 
 def clamp_warmup_distance_km(value: float) -> float:
     return round(min(200.0, max(0.0, value)), 1)
+
+
+def format_duration_seconds(total_seconds: int) -> str:
+    total_seconds = max(0, int(total_seconds))
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    if hours > 0:
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes:02d}:{seconds:02d}"
+
+
+def minutes_to_seconds(minutes: float) -> int:
+    return max(0, int(round(minutes * 60.0)))
+
+
+def seconds_to_minutes(seconds: int) -> float:
+    return clamp_warmup_minutes(float(seconds) / 60.0)
+
+
+def is_plank_exercise(exercise_name: str) -> bool:
+    name = exercise_name.strip().lower()
+    return ("plank" in name) or ("планк" in name)
+
+
+def clamp_hold_seconds(value: int) -> int:
+    return max(1, min(3600, value))
 
 
 def parse_user_date_token(token: str, default_year: int) -> Optional[date]:
@@ -1602,11 +1643,14 @@ def body_weight_change_text(lang: str, current_bw: Optional[float], previous_bw:
 def welcome_text(context: ContextTypes.DEFAULT_TYPE, user_id: int, lang: str) -> str:
     db = get_db(context)
     groups_display = ", ".join(translate_group_name(lang, group) for group in get_muscle_groups(context))
+    commands = LANG_COMMAND_SETS.get(lang) or LANG_COMMAND_SETS["en"]
+    commands_line = "Commands:\n" + ", ".join(f"/{name}" for name, _ in commands)
     return tr(
         lang,
         "welcome_free_plan",
         groups=groups_display,
         recent=recent_groups_text(db, user_id, lang),
+        commands=commands_line,
     )
 
 
@@ -1710,27 +1754,27 @@ def bodyweight_keyboard(current_weight: float, lang: str) -> InlineKeyboardMarku
 
 
 def warmup_minutes_prompt_text(lang: str, minutes: float) -> str:
-    return f"{tr(lang, 'warmup_minutes_prompt')}\nCurrent: {minutes:.2f} min"
+    return f"{tr(lang, 'warmup_minutes_prompt')}\nCurrent: {format_duration_seconds(minutes_to_seconds(minutes))}"
 
 
 def warmup_minutes_keyboard(lang: str, minutes: float) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("+0.01m", callback_data=f"{CB_WMIN_ADJ_PREFIX}0.01"),
-                InlineKeyboardButton("+0.1m", callback_data=f"{CB_WMIN_ADJ_PREFIX}0.1"),
-                InlineKeyboardButton("+1m", callback_data=f"{CB_WMIN_ADJ_PREFIX}1"),
-                InlineKeyboardButton("+10m", callback_data=f"{CB_WMIN_ADJ_PREFIX}10"),
-                InlineKeyboardButton("+60m", callback_data=f"{CB_WMIN_ADJ_PREFIX}60"),
+                InlineKeyboardButton("+1s", callback_data=f"{CB_WMIN_ADJ_PREFIX}1"),
+                InlineKeyboardButton("+10s", callback_data=f"{CB_WMIN_ADJ_PREFIX}10"),
+                InlineKeyboardButton("+1m", callback_data=f"{CB_WMIN_ADJ_PREFIX}60"),
+                InlineKeyboardButton("+10m", callback_data=f"{CB_WMIN_ADJ_PREFIX}600"),
+                InlineKeyboardButton("+1h", callback_data=f"{CB_WMIN_ADJ_PREFIX}3600"),
             ],
             [
-                InlineKeyboardButton("-60m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-60"),
-                InlineKeyboardButton("-10m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-10"),
-                InlineKeyboardButton("-1m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-1"),
-                InlineKeyboardButton("-0.1m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-0.1"),
-                InlineKeyboardButton("-0.01m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-0.01"),
+                InlineKeyboardButton("-1h", callback_data=f"{CB_WMIN_ADJ_PREFIX}-3600"),
+                InlineKeyboardButton("-10m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-600"),
+                InlineKeyboardButton("-1m", callback_data=f"{CB_WMIN_ADJ_PREFIX}-60"),
+                InlineKeyboardButton("-10s", callback_data=f"{CB_WMIN_ADJ_PREFIX}-10"),
+                InlineKeyboardButton("-1s", callback_data=f"{CB_WMIN_ADJ_PREFIX}-1"),
             ],
-            [InlineKeyboardButton(f"\U0001F512 Current: {minutes:.2f} min", callback_data="noop")],
+            [InlineKeyboardButton(f"\U0001F512 Current: {format_duration_seconds(minutes_to_seconds(minutes))}", callback_data="noop")],
             [InlineKeyboardButton(action_confirm_label(lang, "confirm_minutes"), callback_data=CB_WARMUP_CONFIRM)],
             [InlineKeyboardButton(nav_end_label(lang), callback_data=CB_FINISH_SESSION)],
         ]
@@ -1834,6 +1878,7 @@ def clear_pending_exercise_input(workout: Dict[str, object]) -> None:
     workout.pop("reps_list", None)
     workout.pop("weights_list", None)
     workout.pop("current_weight", None)
+    workout.pop("is_time_based", None)
 
 
 async def back_to_exercise_list(update: Update, context: ContextTypes.DEFAULT_TYPE, lang: str) -> int:
@@ -1929,6 +1974,27 @@ def reps_keyboard(current_rep: int, lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
+def hold_time_keyboard(current_seconds: int, lang: str) -> InlineKeyboardMarkup:
+    current_seconds = clamp_hold_seconds(current_seconds)
+    rows = [
+        [
+            InlineKeyboardButton("+1s", callback_data=f"{CB_REP_ADJ_PREFIX}+1"),
+            InlineKeyboardButton("+10s", callback_data=f"{CB_REP_ADJ_PREFIX}+10"),
+            InlineKeyboardButton("+30s", callback_data=f"{CB_REP_ADJ_PREFIX}+30"),
+        ],
+        [
+            InlineKeyboardButton("-30s", callback_data=f"{CB_REP_ADJ_PREFIX}-30"),
+            InlineKeyboardButton("-10s", callback_data=f"{CB_REP_ADJ_PREFIX}-10"),
+            InlineKeyboardButton("-1s", callback_data=f"{CB_REP_ADJ_PREFIX}-1"),
+        ],
+        [InlineKeyboardButton(label_with_icon("\U0001F512", tr(lang, "time_current", value=format_duration_seconds(current_seconds))), callback_data="noop")],
+        [InlineKeyboardButton(action_confirm_label(lang, "confirm_time"), callback_data=CB_REP_CONFIRM)],
+        [InlineKeyboardButton(nav_back_label(lang), callback_data=CB_BACK_EXERCISE)],
+        [InlineKeyboardButton(nav_end_label(lang), callback_data=CB_FINISH_SESSION)],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
 def weight_adjust_keyboard(
     current_weight: float,
     body_weight_kg: Optional[float],
@@ -1971,6 +2037,13 @@ def reps_prompt_text(lang: str, set_no: int, total_sets: int, current_rep: int) 
     return (
         f"{tr(lang, 'choose_reps', set_no=set_no, sets=total_sets)}\n"
         f"{tr(lang, 'reps_current', value=current_rep)}"
+    )
+
+
+def hold_time_prompt_text(lang: str, set_no: int, total_sets: int, current_seconds: int) -> str:
+    return (
+        f"{tr(lang, 'choose_time', set_no=set_no, sets=total_sets)}\n"
+        f"{tr(lang, 'time_current', value=format_duration_seconds(current_seconds))}"
     )
 
 
@@ -2374,12 +2447,26 @@ async def warmup_input_msg(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     workout.pop("warmup_stage", None)
 
     if str(workout.get("muscle_group", "")) == RUNNING_GROUP:
-        await update.effective_message.reply_text(tr(lang, "warmup_saved", minutes=minutes, distance=distance))
+        await update.effective_message.reply_text(
+            tr(
+                lang,
+                "warmup_saved",
+                minutes=format_duration_seconds(minutes_to_seconds(minutes)),
+                distance=distance,
+            )
+        )
         return await finish_workout(update, context)
 
     group = str(workout["muscle_group"])
     exercise_options = get_exercise_options(context, group)
-    await update.effective_message.reply_text(tr(lang, "warmup_saved", minutes=minutes, distance=distance))
+    await update.effective_message.reply_text(
+        tr(
+            lang,
+            "warmup_saved",
+            minutes=format_duration_seconds(minutes_to_seconds(minutes)),
+            distance=distance,
+        )
+    )
     await update.effective_message.reply_text(
         tr(lang, "pick_exercise", group=translate_group_name(lang, group)),
         reply_markup=exercise_keyboard(exercise_options, lang),
@@ -2411,11 +2498,11 @@ async def warmup_input_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     if stage == "minutes" and data.startswith(CB_WMIN_ADJ_PREFIX):
         try:
-            delta = float(data.split(":", 1)[1])
+            delta_seconds = int(data.split(":", 1)[1])
         except ValueError:
             await query.edit_message_text(tr(lang, "warmup_format_error"))
             return WARMUP_INPUT
-        minutes = clamp_warmup_minutes(minutes + delta)
+        minutes = seconds_to_minutes(minutes_to_seconds(minutes) + delta_seconds)
         workout["warmup_minutes_current"] = minutes
         await query.edit_message_text(
             warmup_minutes_prompt_text(lang, minutes),
@@ -2462,7 +2549,14 @@ async def warmup_input_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     workout["warmup_distance_current"] = distance
     workout.pop("warmup_stage", None)
 
-    await query.edit_message_text(tr(lang, "warmup_saved", minutes=minutes, distance=distance))
+    await query.edit_message_text(
+        tr(
+            lang,
+            "warmup_saved",
+            minutes=format_duration_seconds(minutes_to_seconds(minutes)),
+            distance=distance,
+        )
+    )
     if running_only:
         return await finish_workout(update, context)
 
@@ -2540,6 +2634,7 @@ async def select_exercise_cb(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     exercise_name, image_path = exercise_options[ex_index]
     workout["exercise_name"] = exercise_name
+    workout["is_time_based"] = is_plank_exercise(exercise_name)
     display_name = translate_exercise_name(lang, exercise_name)
     workout["current_sets"] = int(workout.get("sets_target", 3) or 3)
     workout.pop("sets_target", None)
@@ -2620,18 +2715,33 @@ async def sets_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     workout["reps_list"] = []
     workout["weights_list"] = []
     workout.pop("current_weight", None)
-    workout["current_rep"] = clamp_reps(int(workout.get("current_rep", 10)))
+    is_time_based = bool(workout.get("is_time_based"))
+    if is_time_based:
+        workout["current_rep"] = clamp_hold_seconds(int(workout.get("current_rep", 45)))
+    else:
+        workout["current_rep"] = clamp_reps(int(workout.get("current_rep", 10)))
 
     await query.edit_message_text(tr(lang, "sets_selected", sets=sets_count))
-    await query.message.reply_text(
-        reps_prompt_text(
-            lang,
-            set_no=1,
-            total_sets=sets_count,
-            current_rep=int(workout["current_rep"]),
-        ),
-        reply_markup=reps_keyboard(int(workout["current_rep"]), lang),
-    )
+    if is_time_based:
+        await query.message.reply_text(
+            hold_time_prompt_text(
+                lang,
+                set_no=1,
+                total_sets=sets_count,
+                current_seconds=int(workout["current_rep"]),
+            ),
+            reply_markup=hold_time_keyboard(int(workout["current_rep"]), lang),
+        )
+    else:
+        await query.message.reply_text(
+            reps_prompt_text(
+                lang,
+                set_no=1,
+                total_sets=sets_count,
+                current_rep=int(workout["current_rep"]),
+            ),
+            reply_markup=reps_keyboard(int(workout["current_rep"]), lang),
+        )
     return EX_REPS
 
 
@@ -2653,16 +2763,23 @@ async def reps_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if data == "noop":
         return EX_REPS
 
-    current_rep = clamp_reps(int(workout.get("current_rep", 10)))
+    is_time_based = bool(workout.get("is_time_based"))
+    if is_time_based:
+        current_rep = clamp_hold_seconds(int(workout.get("current_rep", 45)))
+    else:
+        current_rep = clamp_reps(int(workout.get("current_rep", 10)))
 
     if data.startswith(CB_REP_ADJ_PREFIX):
         try:
             delta = int(data.split(":", 1)[1])
         except ValueError:
-            await query.edit_message_text(tr(lang, "invalid_reps_restart"))
+            await query.edit_message_text(tr(lang, "invalid_time_restart" if is_time_based else "invalid_reps_restart"))
             return EX_REPS
 
-        current_rep = clamp_reps(current_rep + delta)
+        if is_time_based:
+            current_rep = clamp_hold_seconds(current_rep + delta)
+        else:
+            current_rep = clamp_reps(current_rep + delta)
         workout["current_rep"] = current_rep
 
         sets_target = int(workout.get("sets_target", 0))
@@ -2672,26 +2789,42 @@ async def reps_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await query.edit_message_text(tr(lang, "sets_missing_restart"))
             return ConversationHandler.END
 
-        await query.edit_message_text(
-            reps_prompt_text(
-                lang,
-                set_no=set_no,
-                total_sets=sets_target,
-                current_rep=current_rep,
-            ),
-            reply_markup=reps_keyboard(current_rep, lang),
-        )
+        if is_time_based:
+            await query.edit_message_text(
+                hold_time_prompt_text(
+                    lang,
+                    set_no=set_no,
+                    total_sets=sets_target,
+                    current_seconds=current_rep,
+                ),
+                reply_markup=hold_time_keyboard(current_rep, lang),
+            )
+        else:
+            await query.edit_message_text(
+                reps_prompt_text(
+                    lang,
+                    set_no=set_no,
+                    total_sets=sets_target,
+                    current_rep=current_rep,
+                ),
+                reply_markup=reps_keyboard(current_rep, lang),
+            )
         return EX_REPS
 
     if data != CB_REP_CONFIRM:
-        await query.edit_message_text(tr(lang, "invalid_reps_restart"))
+        await query.edit_message_text(tr(lang, "invalid_time_restart" if is_time_based else "invalid_reps_restart"))
         return ConversationHandler.END
 
     rep = current_rep
 
-    if rep < 1 or rep > 100:
-        await query.edit_message_text(tr(lang, "reps_range"))
-        return EX_REPS
+    if is_time_based:
+        if rep < 1 or rep > 3600:
+            await query.edit_message_text(tr(lang, "time_range"))
+            return EX_REPS
+    else:
+        if rep < 1 or rep > 100:
+            await query.edit_message_text(tr(lang, "reps_range"))
+            return EX_REPS
 
     sets_target = int(workout.get("sets_target", 0))
     reps_list: List[int] = list(workout.get("reps_list", []))
@@ -2707,6 +2840,37 @@ async def reps_choice_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     workout["current_rep"] = rep
 
     set_no = len(reps_list)
+    if is_time_based:
+        await query.edit_message_text(
+            tr(
+                lang,
+                "set_time_selected",
+                set_no=set_no,
+                sets=sets_target,
+                value=format_duration_seconds(rep),
+            )
+        )
+
+        if len(reps_list) < sets_target:
+            next_set = len(reps_list) + 1
+            await query.message.reply_text(
+                hold_time_prompt_text(
+                    lang,
+                    set_no=next_set,
+                    total_sets=sets_target,
+                    current_seconds=int(workout["current_rep"]),
+                ),
+                reply_markup=hold_time_keyboard(int(workout["current_rep"]), lang),
+            )
+            return EX_REPS
+
+        workout["sets"] = sets_target
+        workout["reps"] = max(1, round(sum(reps_list) / len(reps_list)))
+        workout["reps_sequence"] = " ".join(str(x) for x in reps_list)
+        primary_weight = clamp_weight_kg(float(workout.get("body_weight_kg") or 1.0))
+        weight_sequence = " ".join(f"{primary_weight:.2f}" for _ in reps_list)
+        return await save_current_exercise(update, context, primary_weight, weight_sequence)
+
     prev_weights: List[float] = list(workout.get("weights_list", []))
     if prev_weights:
         current_weight = clamp_weight_kg(prev_weights[-1])
@@ -2963,7 +3127,12 @@ async def finish_workout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if session and int(session["warmup_done"] or 0) == 1:
         warmup_minutes = float(session["warmup_minutes"] or 0.0)
         warmup_distance = float(session["warmup_distance_km"] or 0.0)
-        warmup_line = tr(lang, "warmup_line", minutes=warmup_minutes, distance=warmup_distance)
+        warmup_line = tr(
+            lang,
+            "warmup_line",
+            minutes=format_duration_seconds(minutes_to_seconds(warmup_minutes)),
+            distance=warmup_distance,
+        )
 
     is_running_completed = bool(
         session
@@ -3514,7 +3683,7 @@ def build_application() -> Application:
             EX_REPS: [
                 CallbackQueryHandler(
                     reps_choice_cb,
-                    pattern=r"^(repadj:[+-](?:1|5|10)|repconfirm|noop|back_exercise|finish_session)$",
+                    pattern=r"^(repadj:[+-](?:1|5|10|30)|repconfirm|noop|back_exercise|finish_session)$",
                 ),
             ],
             EX_WEIGHT: [
