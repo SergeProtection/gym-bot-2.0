@@ -403,8 +403,6 @@ TR: Dict[str, Dict[str, str]] = {
         "unknown_action_restart": "Unknown action. Use /workout.",
         "session_incomplete_restart": "Session data was incomplete. Use /workout to restart.",
         "saved_line": "Saved: {name} | volume {volume:.2f}{pr_line}\nWhat next?",
-        "first_pr": "\nðŸ† First PR set for {name}: {weight:.2f} kg ðŸ’ª",
-        "new_pr": "\nðŸ† New PR for {name}: {old:.2f} -> {new:.2f} kg ðŸ’ª",
         "no_active_workout": "No active workout. Use /workout.",
         "add_next_exercise": "Add the next exercise:",
         "replace_pick": "Last exercise removed. Pick a replacement:",
@@ -434,8 +432,13 @@ TR: Dict[str, Dict[str, str]] = {
         "period_invalid": "Invalid date format. Use DD.MM or DD.MM.YYYY.",
         "period_end_before_start": "End date must be on/after start date.",
         "no_prs": "No PRs yet. Log a workout with /workout.",
-        "pr_header": "ðŸ† Personal Records (max weight by exercise):",
-        "pr_line": "ðŸ’ª {name}: {weight:.2f} kg",
+        "first_pr": "\n\U0001F3C6 First PR set for {name}: {weight:.2f} kg \U0001F4AA",
+        "new_pr": "\n\U0001F3C6 New PR for {name}: {old:.2f} -> {new:.2f} kg \U0001F4AA",
+        "first_pr_time": "\n\U0001F3C6 First PR set for {name}: {value} \U0001F4AA",
+        "new_pr_time": "\n\U0001F3C6 New PR for {name}: {old} -> {new} \U0001F4AA",
+        "pr_header": "\U0001F3C6 Personal Records:",
+        "pr_line": "\U0001F4AA {name}: {weight:.2f} kg",
+        "pr_line_time": "\U0001F4AA {name}: {value}",
         "error_text": "An unexpected error occurred. Please try again.",
         "workout_finish": "Workout ended.\nExercises saved: {count}\nTotal volume: {volume:.2f}{warmup_line}\nNext scheduled group: {next_group}",
         "workout_finish_empty": "Workout ended with no exercises saved.\nNext scheduled group remains: {next_group}",
@@ -576,8 +579,6 @@ TR: Dict[str, Dict[str, str]] = {
         "unknown_action_restart": "Unbekannte Aktion. Nutze /training.",
         "session_incomplete_restart": "Sessiondaten unvollständig. Nutze /training für einen Neustart.",
         "saved_line": "Gespeichert: {name} | Volumen {volume:.2f}{pr_line}\nWas als Nächstes?",
-        "first_pr": "\nErster PR für {name}: {weight:.2f} kg",
-        "new_pr": "\nNeuer PR für {name}: {old:.2f} -> {new:.2f} kg",
         "no_active_workout": "Kein aktives Workout. Nutze /training.",
         "add_next_exercise": "Nächste Übung wählen:",
         "replace_pick": "Letzte Übung entfernt. Wähle eine Ersatzübung:",
@@ -707,10 +708,21 @@ def seconds_to_minutes(seconds: int) -> float:
     return clamp_warmup_minutes(float(seconds) / 60.0)
 
 
-def is_plank_exercise(exercise_name: str) -> bool:
-    name = exercise_name.strip().lower()
-    return ("plank" in name) or ("планк" in name)
+def is_time_based_exercise(exercise_name: str) -> bool:
+    name = normalize_key(exercise_name)
+    if not name:
+        return False
 
+    if "wall sit" in name:
+        return True
+
+    if "plank" in name:
+        # Plank Get Ups are repetition-based, not hold-time based.
+        if ("get up" in name) or ("getup" in name):
+            return False
+        return True
+
+    return False
 
 def clamp_hold_seconds(value: int) -> int:
     return max(1, min(3600, value))
@@ -1543,6 +1555,38 @@ class GymDB:
         if row is None or row["max_weight"] is None:
             return None
         return float(row["max_weight"])
+
+    def get_exercise_max_hold_seconds(self, user_id: int, exercise_name: str) -> Optional[int]:
+        best = 0
+        with closing(self.connect()) as conn:
+            rows = conn.execute(
+                """
+                SELECT reps_sequence, reps
+                FROM exercises
+                WHERE user_id = ? AND name = ?
+                """,
+                (user_id, exercise_name),
+            ).fetchall()
+
+        for row in rows:
+            seq = str(row["reps_sequence"] or "").strip()
+            if seq:
+                for part in seq.split():
+                    try:
+                        value = int(round(float(part)))
+                    except ValueError:
+                        continue
+                    if value > best:
+                        best = value
+            else:
+                try:
+                    value = int(row["reps"] or 0)
+                except (TypeError, ValueError):
+                    value = 0
+                if value > best:
+                    best = value
+
+        return best if best > 0 else None
 
     def get_user_language(self, user_id: int) -> Optional[str]:
         with closing(self.connect()) as conn:
@@ -2634,7 +2678,7 @@ async def select_exercise_cb(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     exercise_name, image_path = exercise_options[ex_index]
     workout["exercise_name"] = exercise_name
-    workout["is_time_based"] = is_plank_exercise(exercise_name)
+    workout["is_time_based"] = is_time_based_exercise(exercise_name)
     display_name = translate_exercise_name(lang, exercise_name)
     workout["current_sets"] = int(workout.get("sets_target", 3) or 3)
     workout.pop("sets_target", None)
@@ -3010,15 +3054,25 @@ async def save_current_exercise(
         return ConversationHandler.END
 
     db = get_db(context)
-    previous_pr = db.get_exercise_max_weight(
-        user_id=update.effective_user.id,
-        exercise_name=str(workout["exercise_name"]),
-    )
+    saved_name = str(workout["exercise_name"])
+    is_time_based = is_time_based_exercise(saved_name)
+    previous_pr_weight: Optional[float] = None
+    previous_pr_seconds: Optional[int] = None
+    if is_time_based:
+        previous_pr_seconds = db.get_exercise_max_hold_seconds(
+            user_id=update.effective_user.id,
+            exercise_name=saved_name,
+        )
+    else:
+        previous_pr_weight = db.get_exercise_max_weight(
+            user_id=update.effective_user.id,
+            exercise_name=saved_name,
+        )
     ex_id, volume = db.add_exercise(
         session_id=int(workout["session_id"]),
         user_id=update.effective_user.id,
         muscle_group=str(workout["muscle_group"]),
-        name=str(workout["exercise_name"]),
+        name=saved_name,
         sets=int(workout["sets"]),
         reps=int(workout["reps"]),
         weight=float(primary_weight),
@@ -3026,8 +3080,8 @@ async def save_current_exercise(
         weight_sequence=weight_sequence,
     )
     workout["last_exercise_id"] = ex_id
-    saved_name = str(workout["exercise_name"])
     display_saved_name = translate_exercise_name(lang, saved_name)
+    reps_sequence = str(workout["reps_sequence"])
 
     workout.pop("exercise_name", None)
     workout.pop("sets", None)
@@ -3041,10 +3095,37 @@ async def save_current_exercise(
     workout.pop("current_weight", None)
 
     pr_line = ""
-    if previous_pr is None:
-        pr_line = tr(lang, "first_pr", name=display_saved_name, weight=primary_weight)
-    elif float(primary_weight) > float(previous_pr):
-        pr_line = tr(lang, "new_pr", name=display_saved_name, old=previous_pr, new=primary_weight)
+    if is_time_based:
+        current_seconds = 0
+        for part in reps_sequence.split():
+            try:
+                value = int(round(float(part)))
+            except ValueError:
+                continue
+            if value > current_seconds:
+                current_seconds = value
+        current_seconds = max(1, current_seconds)
+
+        if previous_pr_seconds is None:
+            pr_line = tr(
+                lang,
+                "first_pr_time",
+                name=display_saved_name,
+                value=format_duration_seconds(current_seconds),
+            )
+        elif current_seconds > int(previous_pr_seconds):
+            pr_line = tr(
+                lang,
+                "new_pr_time",
+                name=display_saved_name,
+                old=format_duration_seconds(int(previous_pr_seconds)),
+                new=format_duration_seconds(current_seconds),
+            )
+    else:
+        if previous_pr_weight is None:
+            pr_line = tr(lang, "first_pr", name=display_saved_name, weight=primary_weight)
+        elif float(primary_weight) > float(previous_pr_weight):
+            pr_line = tr(lang, "new_pr", name=display_saved_name, old=previous_pr_weight, new=primary_weight)
 
     await update.effective_message.reply_text(
         tr(lang, "saved_line", name=display_saved_name, volume=volume, pr_line=pr_line),
@@ -3549,7 +3630,21 @@ async def pr_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     lines = [tr(lang, "pr_header")]
     for r in records:
-        lines.append(tr(lang, "pr_line", name=translate_exercise_name(lang, str(r["name"])), weight=float(r["max_weight"])))
+        exercise_name = str(r["name"])
+        display_name = translate_exercise_name(lang, exercise_name)
+        if is_time_based_exercise(exercise_name):
+            best_seconds = db.get_exercise_max_hold_seconds(user_id, exercise_name)
+            if best_seconds is not None:
+                lines.append(
+                    tr(
+                        lang,
+                        "pr_line_time",
+                        name=display_name,
+                        value=format_duration_seconds(int(best_seconds)),
+                    )
+                )
+                continue
+        lines.append(tr(lang, "pr_line", name=display_name, weight=float(r["max_weight"])))
     await update.effective_message.reply_text("\n".join(lines))
     await send_next_workout_prompt(update.effective_message, lang)
 
