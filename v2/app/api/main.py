@@ -19,6 +19,15 @@ app = FastAPI(
 )
 
 
+@app.get("/")
+def root() -> Dict[str, Any]:
+    return {
+        "service": "gymbot-api",
+        "status": "ok",
+        "message": "Use /health or /docs",
+    }
+
+
 @app.get("/health")
 def health() -> Dict[str, Any]:
     return {"status": "ok", "service": "gymbot-api"}
