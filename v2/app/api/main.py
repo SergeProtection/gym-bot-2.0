@@ -33,6 +33,39 @@ def health() -> Dict[str, Any]:
     return {"status": "ok", "service": "gymbot-api"}
 
 
+@app.get("/users/{user_id}")
+def get_user_profile(user_id: int) -> Dict[str, Any]:
+    profile = repo.user_profile(user_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return profile
+
+
+@app.get("/users/{user_id}/workouts/recent")
+def get_recent_workouts(
+    user_id: int,
+    limit: int = Query(default=3, ge=1, le=20),
+) -> Dict[str, Any]:
+    return {
+        "user_id": user_id,
+        "items": repo.recent_workouts(user_id, limit=limit),
+    }
+
+
+@app.get("/users/{user_id}/exercises")
+def get_exercise_history(
+    user_id: int,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> Dict[str, Any]:
+    return {
+        "user_id": user_id,
+        "limit": limit,
+        "offset": offset,
+        "items": repo.exercise_history(user_id, limit=limit, offset=offset),
+    }
+
+
 @app.get("/summary/today/{user_id}")
 def summary_today(user_id: int) -> Dict[str, Any]:
     return repo.summary_today(user_id)
