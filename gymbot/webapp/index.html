@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>GymBot</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="top">
+    <h1 id="title">GymBot</h1>
+    <span id="streak" class="pill" hidden></span>
+  </header>
+
+  <main id="view" aria-live="polite"></main>
+
+  <nav class="tabs" role="tablist">
+    <button data-tab="workout" role="tab"><span class="ico">🏋️</span>Workout</button>
+    <button data-tab="history" role="tab"><span class="ico">🗓</span>History</button>
+    <button data-tab="progress" role="tab"><span class="ico">📈</span>Progress</button>
+    <button data-tab="plans" role="tab"><span class="ico">📋</span>Plans</button>
+    <button data-tab="settings" role="tab"><span class="ico">⚙️</span>Settings</button>
+  </nav>
+
+  <div id="sheet" class="sheet" hidden>
+    <div class="sheet-backdrop" data-close></div>
+    <div class="sheet-body" role="dialog" aria-modal="true">
+      <div class="sheet-head"><h2 id="sheet-title"></h2><button class="icon-btn" data-close aria-label="Close">✕</button></div>
+      <div id="sheet-content"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>
