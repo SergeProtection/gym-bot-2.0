@@ -1,9 +1,10 @@
-from gymbot.db.base import Database
+﻿from gymbot.db.base import Database
 from gymbot.db.models import (
     Base,
     BodyWeight,
     Exercise,
     ExerciseKind,
+    LoginCode,
     Plan,
     PlanItem,
     Reminder,
@@ -19,6 +20,7 @@ __all__ = [
     "Database",
     "Exercise",
     "ExerciseKind",
+    "LoginCode",
     "Plan",
     "PlanItem",
     "Reminder",

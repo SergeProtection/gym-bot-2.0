@@ -44,7 +44,8 @@ def build(settings: Settings):
                 await bot_app.post_init(bot_app)
             await bot_app.start()
             await bot_app.updater.start_polling(allowed_updates=["message", "callback_query"])
-            log.info("Bot polling started")
+            app.state.bot_username = bot_app.bot.username
+            log.info("Bot polling started (@%s)", bot_app.bot.username)
         if settings.miniapp_url:
             log.info("Mini App: %s", settings.miniapp_url)
         else:

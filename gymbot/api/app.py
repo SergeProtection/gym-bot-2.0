@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import date
 from typing import Any, Awaitable, Callable
 
@@ -21,6 +22,7 @@ from gymbot.api import serializers as ser
 from gymbot.api.auth import AuthError, validate_init_data
 from gymbot.config import PROJECT_ROOT, Settings
 from gymbot.db import Database, ExerciseKind, User
+from gymbot.services import auth as auth_svc
 from gymbot.services import catalog, plans, reminders, stats, users, workouts
 from gymbot.services.plans import PlanError
 from gymbot.services.reminders import ReminderError
@@ -109,29 +111,52 @@ def query_int(request: Request, key: str, default: int, lo: int, hi: int) -> int
 Handler = Callable[[Request, AsyncSession, User], Awaitable[Any]]
 
 
-def _authenticate(request: Request) -> tuple[int, str | None, str | None]:
+@dataclass(frozen=True)
+class Identity:
+    user_id: int
+    first_name: str | None = None
+    username: str | None = None
+    session_version: int | None = None  # set for standalone-app sessions
+
+
+def _authenticate(request: Request) -> Identity:
     settings: Settings = request.app.state.settings
     header = request.headers.get("authorization", "")
-    if header.lower().startswith("tma "):
+    scheme, _, credentials = header.partition(" ")
+    if scheme.lower() == "tma":
         try:
-            tg = validate_init_data(header[4:].strip(), settings.telegram_bot_token)
+            tg = validate_init_data(credentials.strip(), settings.telegram_bot_token)
         except AuthError as exc:
             raise ApiError(401, f"Unauthorized: {exc}") from exc
-        return tg.id, tg.first_name, tg.username
+        return Identity(tg.id, tg.first_name, tg.username)
+    if scheme.lower() == "bearer":
+        found = auth_svc.read_session(credentials.strip(), request.app.state.session_secret)
+        if found is None:
+            raise ApiError(401, "Unauthorized: your sign-in expired, send /login to the bot")
+        return Identity(found[0], session_version=found[1])
     if settings.dev_user_id:
-        return settings.dev_user_id, "Dev", None
+        return Identity(settings.dev_user_id, "Dev")
     raise ApiError(401, "Unauthorized: open this page from the Telegram bot")
 
 
 def api(handler: Handler) -> Callable[[Request], Awaitable[Response]]:
     async def endpoint(request: Request) -> Response:
-        user_id, first_name, username = _authenticate(request)
+        ident = _authenticate(request)
         db: Database = request.app.state.db
         settings: Settings = request.app.state.settings
         async with db.session() as session:
-            user = await users.upsert_user(
-                session, user_id, first_name=first_name, username=username, default_rest=settings.default_rest_seconds
-            )
+            if ident.session_version is None:
+                user = await users.upsert_user(
+                    session,
+                    ident.user_id,
+                    first_name=ident.first_name,
+                    username=ident.username,
+                    default_rest=settings.default_rest_seconds,
+                )
+            else:
+                user = await users.get_user(session, ident.user_id)
+                if user is None or user.session_version != ident.session_version:
+                    raise ApiError(401, "Unauthorized: you were signed out, send /login to the bot")
             result = await handler(request, session, user)
         if isinstance(result, Response):
             return result
@@ -139,6 +164,36 @@ def api(handler: Handler) -> Callable[[Request], Awaitable[Response]]:
 
     endpoint.__name__ = handler.__name__
     return endpoint
+
+
+# ---------------------------------------------------------------- standalone-app sign-in
+
+
+async def public_config(request: Request) -> Response:
+    username = request.app.state.bot_username
+    return JSONResponse({"bot_username": username, "bot_url": f"https://t.me/{username}?start=login" if username else None})
+
+
+async def redeem_code(request: Request) -> Response:
+    limiter: auth_svc.FailureLimiter = request.app.state.login_limiter
+    if limiter.blocked():
+        raise ApiError(429, "Too many wrong codes. Wait a few minutes and try again.")
+    code = text(await body(request), "code", max_len=20)
+    db: Database = request.app.state.db
+    async with db.session() as session:
+        user = await auth_svc.redeem_login_code(session, code)
+        if user is None:
+            limiter.record_failure()
+            raise ApiError(400, "That code is wrong or expired. Send /login to the bot for a new one.")
+        token = auth_svc.issue_session(user, request.app.state.session_secret)
+        data = {"token": token, "user": ser.user(user)}
+    return JSONResponse(data)
+
+
+async def sign_out_everywhere(request: Request, s: AsyncSession, user: User):
+    user.session_version += 1
+    await s.flush()
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- profile
@@ -538,6 +593,9 @@ def routes(settings: Settings) -> list:
         Route("/", root),
         Route("/health", health),
         Route("/app", lambda request: RedirectResponse("/app/")),
+        Route("/api/public/config", public_config, methods=["GET"]),
+        Route("/api/auth/redeem", redeem_code, methods=["POST"]),
+        Route("/api/auth/signout-all", api(sign_out_everywhere), methods=["POST"]),
         Route("/api/me", api(me), methods=["GET"]),
         Route("/api/me", api(update_me), methods=["PATCH"]),
         Route("/api/groups", api(groups), methods=["GET"]),
@@ -594,4 +652,7 @@ def create_app(settings: Settings, db: Database, lifespan=None) -> Starlette:
     )
     app.state.settings = settings
     app.state.db = db
+    app.state.session_secret = auth_svc.session_secret(settings.telegram_bot_token, settings.session_secret)
+    app.state.login_limiter = auth_svc.FailureLimiter()
+    app.state.bot_username = None  # filled in once the bot has started
     return app

@@ -48,6 +48,8 @@ class User(Base):
     first_name: Mapped[str | None] = mapped_column(String(128))
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")
     rest_seconds: Mapped[int] = mapped_column(Integer, default=90)
+    # Bumped to sign out every standalone-app session of this user.
+    session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
@@ -146,6 +148,19 @@ class Reminder(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     # Local date of the last send, so a reminder fires at most once per day.
     last_sent_on: Mapped[date | None] = mapped_column(Date)
+
+
+class LoginCode(Base):
+    """One-time code (sent by the bot) that signs a user in to the standalone app."""
+
+    __tablename__ = "login_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True)  # sha256 hex; the code itself is never stored
+    expires_at: Mapped[datetime] = mapped_column()
+    used_at: Mapped[datetime | None] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
 class BodyWeight(Base):

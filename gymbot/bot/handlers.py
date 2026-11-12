@@ -30,6 +30,7 @@ from telegram.ext import (
 from gymbot.bot import texts
 from gymbot.config import Settings
 from gymbot.db import Database, Exercise, ExerciseKind, User
+from gymbot.services import auth as auth_svc
 from gymbot.services import catalog, plans, reminders, stats, users, workouts
 from gymbot.services.plans import PlanError
 from gymbot.services.reminders import ReminderError
@@ -61,6 +62,7 @@ COMMANDS = [
     ("pr", "Personal records"),
     ("remind", "Training reminders"),
     ("app", "Open the Mini App"),
+    ("login", "Install GymBot as a phone app"),
     ("help", "How to use the bot"),
 ]
 
@@ -180,7 +182,35 @@ def _next_item(workout) -> tuple[int, str] | None:
 # ---------------------------------------------------------------- basic commands
 
 
+async def login_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """One-time code + link that signs this user in to the standalone (home screen) app."""
+    if update.effective_chat and update.effective_chat.type != "private":
+        await reply(update, "For your safety, send /login to me in a private chat.")
+        return
+    settings = _settings(context)
+    base = settings.public_url
+    if not base.startswith("https://"):
+        await reply(update, "The app isn't online yet (WEBAPP_URL must be an https address).")
+        return
+    async with user_session(update, context) as (s, user):
+        code = await auth_svc.create_login_code(s, user.id)
+    pretty = auth_svc.format_code(code)
+    link = f"{base}/app/?login={code}"
+    text = (
+        "📲 <b>Install GymBot as an app</b>\n\n"
+        f"<b>Android:</b> tap the button below, then in Chrome choose ⋮ → <i>Add to Home screen</i> (or <i>Install app</i>).\n\n"
+        f"<b>iPhone:</b> open <code>{escape(base)}/app/</code> in Safari, tap Share → <i>Add to Home Screen</i>, "
+        f"open the new icon and enter this code:\n\n<code>{pretty}</code>\n\n"
+        "The code works once and expires in 10 minutes. Don't share it — it signs in as you."
+    )
+    markup = InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Open in browser", url=link)]])
+    await reply(update, text, markup)
+
+
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if context.args and context.args[0] == "login":
+        await login_cmd(update, context)
+        return
     async with user_session(update, context) as (s, user):
         active = await workouts.get_active(s, user.id)
     name = escape(update.effective_user.first_name or "there")
@@ -730,6 +760,7 @@ def build_application(settings: Settings, db: Database) -> Application:
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("app", app_cmd))
+    app.add_handler(CommandHandler("login", login_cmd))
     app.add_handler(CommandHandler(["workout", "train"], workout_cmd))
     app.add_handler(CommandHandler("finish", finish_cmd))
     app.add_handler(CommandHandler("cancel", cancel_cmd))

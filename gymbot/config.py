@@ -62,6 +62,8 @@ class Settings:
     # Local development only: lets the Mini App API accept requests without
     # Telegram initData, acting as this user id. Never set this in production.
     dev_user_id: int | None = None
+    # Signs standalone-app sessions. Optional: derived from the bot token when empty.
+    session_secret: str = ""
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> Settings:
@@ -80,6 +82,7 @@ class Settings:
             default_rest_seconds=_int(e.get("DEFAULT_REST_SECONDS"), d.default_rest_seconds),
             log_level=e.get("LOG_LEVEL", d.log_level).upper(),
             dev_user_id=_int(e.get("DEV_USER_ID"), None),
+            session_secret=e.get("SESSION_SECRET", "").strip(),
         )
 
     @property

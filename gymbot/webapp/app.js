@@ -1,13 +1,23 @@
 "use strict";
 
-/* GymBot Mini App — plain JS, no build step. Talks to /api/* with Telegram initData. */
+/* GymBot app — plain JS, no build step.
+   Inside Telegram it signs in with Telegram initData; as a standalone (home screen)
+   app it uses a session token obtained with a one-time /login code from the bot. */
 
 const tg = window.Telegram && window.Telegram.WebApp;
-if (tg && tg.initData) {
+const inTelegram = !!(tg && tg.initData);
+if (inTelegram) {
   document.documentElement.dataset.tg = "1";
   tg.ready();
   tg.expand();
 }
+
+const SESSION_KEY = "gymbot.session";
+const session = {
+  get() { try { return localStorage.getItem(SESSION_KEY); } catch (_) { return null; } },
+  set(token) { try { localStorage.setItem(SESSION_KEY, token); } catch (_) { /* private mode */ } },
+  clear() { try { localStorage.removeItem(SESSION_KEY); } catch (_) { /* private mode */ } },
+};
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const view = $("#view");
@@ -75,7 +85,8 @@ function confirmAsk(text) {
 
 async function api(path, { method = "GET", body } = {}) {
   const headers = { "Content-Type": "application/json" };
-  if (tg && tg.initData) headers.Authorization = `tma ${tg.initData}`;
+  if (inTelegram) headers.Authorization = `tma ${tg.initData}`;
+  else if (session.get()) headers.Authorization = `Bearer ${session.get()}`;
   const res = await fetch(`/api${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
   let data = null;
   try { data = await res.json(); } catch (_) { /* empty */ }
@@ -92,14 +103,74 @@ async function guard(fn) {
     return await fn();
   } catch (e) {
     haptic("error");
-    toast(e.message);
-    if (e.status === 401) renderAuthError(e.message);
+    if (e.status === 401) {
+      if (inTelegram) renderAuthError(e.message);
+      else { session.clear(); renderLogin(); }
+    } else {
+      toast(e.message);
+    }
     return undefined;
   }
 }
 
 function renderAuthError(msg) {
   view.innerHTML = `<div class="card empty"><p><b>Can't sign you in.</b></p><p>${esc(msg)}</p><p>Open this app from the GymBot chat in Telegram.</p></div>`;
+}
+
+// ------------------------------------------------------------------ standalone sign-in
+
+let loginShown = false;
+async function renderLogin(message = "") {
+  loginShown = true;
+  document.body.classList.add("signed-out");
+  $("#title").textContent = "GymBot";
+  view.onclick = view.onchange = null;
+  let botUrl = null;
+  try { botUrl = (await (await fetch("/api/public/config")).json()).bot_url; } catch (_) { /* offline */ }
+  view.innerHTML = `<div class="login">
+      <img src="icon-192.png" alt="">
+      <h2>Sign in to GymBot</h2>
+      <div class="card" style="margin-top:14px;text-align:left">
+        <ol>
+          <li>Open GymBot in Telegram and send <b>/login</b>.</li>
+          <li>Type the 6-character code it sends you here.</li>
+        </ol>
+        ${botUrl ? `<a class="btn ghost block" href="${esc(botUrl)}" target="_blank" rel="noopener">Open GymBot in Telegram</a>` : ""}
+        <input class="input code-input" style="margin-top:12px" maxlength="7" placeholder="ABC-123"
+          autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" data-code>
+        <button class="btn block" style="margin-top:10px" data-signin>Sign in</button>
+        <p class="muted" data-msg style="min-height:1.4em;margin:10px 0 0">${esc(message)}</p>
+      </div>
+    </div>`;
+  const input = $("[data-code]", view);
+  const submit = async () => {
+    const code = input.value.trim();
+    if (code.replace(/[^a-z0-9]/gi, "").length < 6) { $("[data-msg]", view).textContent = "Enter the 6-character code."; return; }
+    $("[data-signin]", view).disabled = true;
+    const ok = await redeem(code);
+    if (!ok) $("[data-signin]", view).disabled = false;
+  };
+  $("[data-signin]", view).addEventListener("click", submit);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+}
+
+async function redeem(code) {
+  try {
+    const res = await fetch("/api/auth/redeem", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Sign-in failed");
+    session.set(data.token);
+    loginShown = false;
+    document.body.classList.remove("signed-out");
+    toast(`Welcome, ${data.user.first_name || "athlete"}! 💪`);
+    refreshMe();
+    switchTab("workout");
+    return true;
+  } catch (e) {
+    if (loginShown) { const msg = $("[data-msg]", view); if (msg) msg.textContent = e.message; }
+    else renderLogin(e.message);
+    return false;
+  }
 }
 
 // ------------------------------------------------------------------ sheet (modal)
@@ -642,7 +713,7 @@ async function renderSettings() {
       <div class="row"><input class="input grow" inputmode="decimal" placeholder="e.g. 82.5" data-bw><button class="btn small" data-addbw>Log kg</button></div>
     </div>
 
-    <h3>Home screen</h3>
+    <h3>App</h3>
     <div class="card" data-home><span class="muted">Checking…</span></div>
     <p class="muted" style="text-align:center">GymBot · ${esc(u.first_name || "")} · ${me.total_workouts} workout${me.total_workouts === 1 ? "" : "s"} logged</p>`;
 
@@ -686,21 +757,48 @@ async function renderSettings() {
 
 // ------------------------------------------------------------------ home screen shortcut
 
+const isStandalone = () =>
+  window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+
 function renderHomeScreen(box) {
   if (!box) return;
-  const supported = tg && tg.initData && typeof tg.addToHomeScreen === "function" && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0");
-  if (!supported) {
-    box.innerHTML = `<span class="muted">Your Telegram app can't add shortcuts yet. Update Telegram and open this page again.</span>`;
-    return;
-  }
+  if (!inTelegram) return renderAccountBox(box);
+  box.innerHTML = `<div class="muted" style="margin-bottom:8px"><b>Install GymBot as its own app</b> — full screen, own icon, no Telegram around it. The bot sends you a sign-in link and code.</div>
+    <button class="btn block" data-install>📲 Install as app</button>
+    <div data-tgshortcut style="margin-top:12px"></div>`;
+  box.querySelector("[data-install]").addEventListener("click", async () => {
+    let url = null;
+    try { url = (await (await fetch("/api/public/config")).json()).bot_url; } catch (_) { /* offline */ }
+    if (url && tg.openTelegramLink) { tg.openTelegramLink(url); tg.close(); }
+    else toast("Send /login to the bot in Telegram");
+  });
+  renderTelegramShortcut(box.querySelector("[data-tgshortcut]"));
+}
+
+function renderAccountBox(box) {
+  const installHint = isStandalone()
+    ? ""
+    : `<div class="muted" style="margin-bottom:10px">Add this app to your home screen: on iPhone tap Share → <i>Add to Home Screen</i>; on Android tap ⋮ → <i>Add to Home screen</i> / <i>Install app</i>.</div>`;
+  box.innerHTML = `${installHint}
+    <div class="btns" style="margin-top:0"><button class="btn ghost" data-signout>Sign out</button><button class="btn danger" data-signoutall>Sign out everywhere</button></div>`;
+  box.querySelector("[data-signout]").addEventListener("click", () => { session.clear(); renderLogin("Signed out."); });
+  box.querySelector("[data-signoutall]").addEventListener("click", async () => {
+    if (!(await confirmAsk("Sign out of GymBot on all your phones and browsers? (Telegram stays signed in.)"))) return;
+    if (await guard(() => api("/auth/signout-all", { method: "POST" }))) { session.clear(); renderLogin("Signed out everywhere."); }
+  });
+}
+
+function renderTelegramShortcut(box) {
+  const supported = typeof tg.addToHomeScreen === "function" && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0");
+  if (!supported) { box.remove(); return; }
   const show = (status) => {
     if (status === "added") {
-      box.innerHTML = `<span>✅ GymBot is on your home screen.</span>`;
+      box.innerHTML = `<span class="muted">✅ Telegram shortcut is on your home screen.</span>`;
     } else if (status === "unsupported") {
-      box.innerHTML = `<span class="muted">This device doesn't support home screen shortcuts from Telegram.</span>`;
+      box.remove();
     } else {
-      box.innerHTML = `<div class="muted" style="margin-bottom:8px">Open GymBot straight from your phone's home screen.</div>
-        <button class="btn block" data-addhome>📲 Add to home screen</button>`;
+      box.innerHTML = `<div class="muted" style="margin-bottom:8px">Or add a shortcut that opens GymBot inside Telegram:</div>
+        <button class="btn ghost block" data-addhome>Add Telegram shortcut</button>`;
       box.querySelector("[data-addhome]").addEventListener("click", () => {
         try { tg.addToHomeScreen(); } catch (_) { toast("Couldn't open the prompt — update Telegram and try again"); }
       });
@@ -713,8 +811,8 @@ function renderHomeScreen(box) {
 if (tg && typeof tg.onEvent === "function") {
   tg.onEvent("homeScreenAdded", () => {
     toast("Added to your home screen 🎉");
-    const box = $("[data-home]");
-    if (box) box.innerHTML = `<span>✅ GymBot is on your home screen.</span>`;
+    const box = $("[data-tgshortcut]");
+    if (box) box.innerHTML = `<span class="muted">✅ Telegram shortcut is on your home screen.</span>`;
   });
 }
 
@@ -739,7 +837,7 @@ document.querySelector(".tabs").addEventListener("click", (e) => {
   const b = e.target.closest("[data-tab]");
   if (b) { haptic("light"); switchTab(b.dataset.tab); }
 });
-window.addEventListener("hashchange", () => switchTab(location.hash.slice(1)));
+window.addEventListener("hashchange", () => { if (!loginShown) switchTab(location.hash.slice(1)); });
 
 async function refreshMe() {
   const me = await guard(() => api("/me"));
@@ -750,5 +848,24 @@ async function refreshMe() {
   el.textContent = `🔥 ${me.streak_weeks} week${me.streak_weeks > 1 ? "s" : ""}`;
 }
 
-refreshMe();
-switchTab(location.hash.slice(1) || "workout");
+async function boot() {
+  if (!inTelegram) {
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => { /* not critical */ });
+    const code = new URLSearchParams(location.search).get("login");
+    if (code) {
+      // Drop the code from the address bar so it isn't bookmarked or installed with the app.
+      history.replaceState(null, "", location.pathname + location.hash);
+      await redeem(code);
+      return;
+    }
+    if (!session.get()) {
+      // No session: the server may still allow a local dev user; otherwise show sign-in.
+      const res = await fetch("/api/me").catch(() => null);
+      if (!res || !res.ok) { renderLogin(); return; }
+    }
+  }
+  refreshMe();
+  switchTab(location.hash.slice(1) || "workout");
+}
+
+boot();
