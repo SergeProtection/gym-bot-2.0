@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 from sqlalchemy import or_, select
@@ -116,6 +117,12 @@ async def sync_catalog(session: AsyncSession, base_dir: Path) -> int:
     if added:
         log.info("Exercise catalog: added %d exercises", added)
     return added
+
+
+@lru_cache(maxsize=4)
+def group_covers(base_dir: str) -> dict[str, str]:
+    """{group: cover image path} from the asset folders (cached; the folders only change on deploy)."""
+    return scan_assets(Path(base_dir))[1]
 
 
 def sort_groups(groups: set[str] | list[str]) -> list[str]:

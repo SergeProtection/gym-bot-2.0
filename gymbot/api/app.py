@@ -24,6 +24,7 @@ from gymbot.config import PROJECT_ROOT, Settings
 from gymbot.db import Database, ExerciseKind, User
 from gymbot.services import auth as auth_svc
 from gymbot.services import catalog, plans, reminders, stats, users, workouts
+from gymbot.services import dashboard as dashboard_svc
 from gymbot.services.plans import PlanError
 from gymbot.services.reminders import ReminderError
 from gymbot.utils import local_today, parse_date_token, parse_hhmm, parse_timezone
@@ -206,6 +207,29 @@ async def me(request: Request, s: AsyncSession, user: User):
         "streak_weeks": await stats.week_streak(s, user.id, user.timezone),
         "total_workouts": await stats.count_completed(s, user.id),
         "active_workout": ser.active_workout(workouts.summarize(active)) if active else None,
+    }
+
+
+async def dashboard(request: Request, s: AsyncSession, user: User):
+    d = await dashboard_svc.build(s, user)
+    covers = catalog.group_covers(str(request.app.state.settings.exercise_dir))
+    bw = d.body_weight
+    return {
+        "user": ser.user(user),
+        "today": d.today.isoformat(),
+        "week_days": d.week_days,
+        "week": ser.period(d.week),
+        "streak_weeks": d.streak_weeks,
+        "total_workouts": d.total_workouts,
+        "last_workout": ser.summary(d.last) if d.last else None,
+        "body_weight": {"weight_kg": bw.weight_kg, "measured_at": ser.iso(bw.measured_at), "change_kg": d.body_weight_change} if bw else None,
+        "next": {
+            "group": d.next_group,
+            "image": ser.media_url(covers.get(d.next_group)),
+            "plan": ser.plan(d.next_plan) if d.next_plan else None,
+            "rotation": dashboard_svc.ROTATION,
+        },
+        "plans": [ser.plan(p) for p in d.plans if p.items],
     }
 
 
@@ -597,6 +621,7 @@ def routes(settings: Settings) -> list:
         Route("/api/auth/redeem", redeem_code, methods=["POST"]),
         Route("/api/auth/signout-all", api(sign_out_everywhere), methods=["POST"]),
         Route("/api/me", api(me), methods=["GET"]),
+        Route("/api/dashboard", api(dashboard), methods=["GET"]),
         Route("/api/me", api(update_me), methods=["PATCH"]),
         Route("/api/groups", api(groups), methods=["GET"]),
         Route("/api/exercises", api(exercises), methods=["GET"]),

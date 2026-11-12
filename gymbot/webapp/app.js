@@ -177,7 +177,12 @@ async function redeem(code) {
 
 function openSheet(title, html, onMount) {
   $("#sheet-title").textContent = title;
-  $("#sheet-content").innerHTML = html;
+  // Swap in a fresh element so listeners from the previous sheet can't pile up
+  // (they did: re-opening the plan editor made one tap add the exercise N times).
+  const old = $("#sheet-content");
+  const fresh = old.cloneNode(false);
+  old.replaceWith(fresh);
+  fresh.innerHTML = html;
   $("#sheet").hidden = false;
   document.body.style.overflow = "hidden";
   if (onMount) onMount($("#sheet-content"));
@@ -242,12 +247,14 @@ async function loadCatalog() {
 }
 
 const thumb = (ex) =>
-  ex.image ? `<img class="thumb" src="${esc(ex.image)}" alt="" loading="lazy">` : `<span class="thumb">${ex.kind === "cardio" ? "🏃" : ex.kind === "time" ? "⏱" : "🏋️"}</span>`;
+  ex.image ? `<img class="thumb pic" src="${esc(ex.image)}" alt="" loading="lazy">` : `<span class="thumb">${ex.kind === "cardio" ? "🏃" : ex.kind === "time" ? "⏱" : "🏋️"}</span>`;
 
-function pickExercise(title = "Pick exercise") {
+const kindIcon = (ex) => (ex.kind === "cardio" ? "🏃" : ex.kind === "time" ? "⏱" : "🏋️");
+
+function pickExercise(title = "Pick exercise", startGroup = null) {
   return new Promise(async (resolve) => {
     await guard(loadCatalog);
-    let group = state.groups[0] || "";
+    let group = (startGroup && state.groups.includes(startGroup) ? startGroup : state.groups[0]) || "";
     let query = "";
     const recentIds = new Set((state.workout?.exercises || []).map((b) => b.exercise.id));
     const render = (root) => {
@@ -255,16 +262,19 @@ function pickExercise(title = "Pick exercise") {
       const items = state.exercises.filter((x) => (q ? x.name.toLowerCase().includes(q) : x.group === group));
       root.querySelector(".chips").innerHTML = state.groups
         .map((g) => `<button class="chip ${g === group && !q ? "on" : ""}" data-group="${esc(g)}">${esc(g)}</button>`).join("");
-      root.querySelector(".list").innerHTML = items.length
-        ? items.map((x) => `<button class="list-item" data-id="${x.id}">${thumb(x)}<span class="grow"><span class="ellipsis">${esc(x.name)}</span>
-            <span class="muted">${esc(x.group)}${recentIds.has(x.id) ? " · in this workout" : ""}${x.custom ? " · custom" : ""}</span></span></button>`).join("")
-        : `<div class="empty">Nothing found.</div>`;
+      root.querySelector(".ex-grid").innerHTML = items.length
+        ? items.map((x) => `<button class="ex-tile ${recentIds.has(x.id) ? "done" : ""}" data-id="${x.id}">
+            ${x.image ? `<img src="${esc(x.image)}" alt="" loading="lazy">` : `<span class="ex-ico">${kindIcon(x)}</span>`}
+            <span class="ex-name">${esc(x.name)}</span>
+            ${recentIds.has(x.id) ? `<span class="ex-badge">✓ today</span>` : x.custom ? `<span class="ex-badge">custom</span>` : ""}
+          </button>`).join("")
+        : `<div class="empty" style="grid-column:1/-1">Nothing found.</div>`;
     };
     openSheet(title, `
       <input class="input" type="search" placeholder="Search exercises" autocomplete="off">
       <div class="chips" style="margin-top:10px"></div>
-      <div class="card tight list"></div>
-      <button class="btn ghost block" data-custom>+ Custom exercise</button>`, (root) => {
+      <div class="ex-grid"></div>
+      <button class="btn ghost block" style="margin-top:12px" data-custom>+ Custom exercise</button>`, (root) => {
       render(root);
       root.querySelector("input").addEventListener("input", (e) => { query = e.target.value; render(root); });
       root.addEventListener("click", async (e) => {
@@ -417,18 +427,106 @@ async function renderWorkout() {
   };
 }
 
+async function startWorkout({ planId = null, group = null } = {}) {
+  const res = await guard(() => api("/workout/start", { method: "POST", body: planId ? { plan_id: planId } : {} }));
+  if (!res) return;
+  haptic("medium");
+  currentExercise = null;
+  closeSheet();
+  await renderWorkout();
+  if (!planId) {
+    const ex = await pickExercise(group ? `${group} exercises` : "Pick exercise", group);
+    if (ex) { renderLogger(ex); $("#logger")?.scrollIntoView({ behavior: "smooth", block: "center" }); }
+  }
+}
+
+function greeting() {
+  const h = new Date().getHours();
+  return h < 5 ? "Late session" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+}
+
 async function renderStart() {
-  const plans = (await guard(() => api("/plans")))?.plans || [];
-  view.innerHTML = `<div class="card"><h2>Ready to train?</h2><p class="muted">Start an empty workout and add exercises as you go, or follow one of your plans.</p>
-      <button class="btn block" data-start>🏋️ Start workout</button></div>
-    ${plans.filter((p) => p.items.length).length ? `<h3>Start from a plan</h3><div class="card tight">${plans.filter((p) => p.items.length).map((p) =>
-      `<button class="list-item" data-plan="${p.id}"><span class="grow"><b>${esc(p.name)}</b><span class="muted ellipsis" style="display:block">${p.items.map((i) => esc(i.exercise.name)).join(" · ")}</span></span><span>▶️</span></button>`).join("")}</div>` : ""}`;
+  const d = await guard(() => api("/dashboard"));
+  if (!d) return;
+  const name = d.user.first_name || "athlete";
+  const today = new Date(`${d.today}T12:00:00`);
+  const todayIdx = (today.getDay() + 6) % 7; // Monday = 0
+  const next = d.next;
+  const plan = next.plan;
+  const title = plan ? plan.name : `${next.group} day`;
+  const bw = d.body_weight;
+  const change = bw && bw.change_kg ? ` · ${bw.change_kg > 0 ? "+" : ""}${num(bw.change_kg, 1)}` : "";
+  const last = d.last_workout;
+
+  view.innerHTML = `
+    <section class="hero">
+      <div class="muted">${esc(today.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" }))}</div>
+      <h2>${greeting()}, ${esc(name)} 💪</h2>
+    </section>
+
+    <div class="next-card">
+      <div class="next-body">
+        <div class="eyebrow">Next up</div>
+        <div class="next-title">${esc(title)}</div>
+        <div class="next-sub">${plan
+          ? esc(plan.items.slice(0, 4).map((i) => i.exercise.name).join(" · ")) + (plan.items.length > 4 ? ` +${plan.items.length - 4}` : "")
+          : `No ${esc(next.group.toLowerCase())} plan yet — pick exercises as you go`}</div>
+        <div class="rotation">${next.rotation.map((g) => `<span class="${g === next.group ? "on" : ""}">${esc(g)}</span>`).join("")}</div>
+      </div>
+      ${next.image ? `<img src="${esc(next.image)}" alt="">` : ""}
+    </div>
+
+    <div class="stats stats-2">
+      <button class="stat tap" data-bw><b>${bw ? `${num(bw.weight_kg, 1)} kg` : "—"}</b><span>Body weight${esc(change)}${bw ? "" : " · tap to log"}</span></button>
+      <div class="stat"><b>${d.week.workouts}</b><span>Workouts this week</span></div>
+      <div class="stat"><b>${d.streak_weeks ? `🔥 ${d.streak_weeks}` : "0"}</b><span>Week streak</span></div>
+      <div class="stat"><b>${d.total_workouts}</b><span>Workouts total</span></div>
+    </div>
+
+    <h3>This week</h3>
+    <div class="card week">${DAYS.map((day, i) => `<div><div class="d">${day[0]}</div>
+      <div class="dot ${d.week_days[i] ? "on" : ""} ${i === todayIdx ? "today" : ""}">${d.week_days[i] ? "✓" : ""}</div></div>`).join("")}</div>
+
+    ${last ? `<h3>Last workout</h3>
+    <button class="card last tap" data-last>
+      <div class="row between"><b>${esc(last.groups.slice(0, 3).join(", ") || "Workout")}</b><span class="muted">${esc(fmtDate(last.started_at))}</span></div>
+      <div class="muted">${last.set_count} set${last.set_count === 1 ? "" : "s"} · ${span(last.duration_s)}${last.volume_kg ? ` · ${kg(last.volume_kg)}` : ""}${last.pr_count ? ` · ${last.pr_count} 🏆` : ""}</div>
+    </button>` : `<div class="card empty">Your first workout starts here. Tap <b>Start</b> below.</div>`}
+
+    <div class="startbar-spacer"></div>
+    <div class="startbar">
+      <button class="btn go" data-go>▶ Start ${esc(title)}</button>
+      <button class="btn ghost more" data-other aria-label="Other workouts">⋯</button>
+    </div>`;
+
   view.onclick = async (e) => {
-    const plan = e.target.closest("[data-plan]");
-    if (!plan && !e.target.closest("[data-start]")) return;
-    const body = plan ? { plan_id: +plan.dataset.plan } : {};
-    if (await guard(() => api("/workout/start", { method: "POST", body }))) { haptic("medium"); currentExercise = null; renderWorkout(); }
+    if (e.target.closest("[data-go]")) return startWorkout(plan ? { planId: plan.id } : { group: next.group });
+    if (e.target.closest("[data-other]")) return chooseWorkout(d);
+    if (e.target.closest("[data-last]")) return showSummary(last);
+    if (e.target.closest("[data-bw]")) {
+      const raw = window.prompt("Body weight (kg)", bw ? num(bw.weight_kg, 1) : "");
+      const v = parseFloat(String(raw || "").replace(",", "."));
+      if (!v) return;
+      if (await guard(() => api("/bodyweight", { method: "POST", body: { weight_kg: v } }))) { toast("Body weight logged"); renderStart(); }
+    }
   };
+}
+
+function chooseWorkout(d) {
+  openSheet("Start a workout", `
+    <button class="btn block" data-empty>Empty workout</button>
+    ${d.plans.length ? `<h3>Your plans</h3><div class="card tight">${d.plans.map((p) =>
+      `<button class="list-item" data-plan="${p.id}"><span class="grow"><b>${esc(p.name)}</b><span class="muted ellipsis" style="display:block">${esc(p.items.map((i) => i.exercise.name).join(" · "))}</span></span><span>▶️</span></button>`).join("")}</div>` : ""}
+    <h3>Train a muscle group</h3>
+    <div class="chips" style="flex-wrap:wrap">${d.next.rotation.map((g) => `<button class="chip" data-group="${esc(g)}">${esc(g)}</button>`).join("")}</div>`, (root) => {
+    root.addEventListener("click", (e) => {
+      const p = e.target.closest("[data-plan]");
+      const g = e.target.closest("[data-group]");
+      if (p) startWorkout({ planId: +p.dataset.plan });
+      else if (g) startWorkout({ group: g.dataset.group });
+      else if (e.target.closest("[data-empty]")) startWorkout();
+    });
+  });
 }
 
 async function renderLogger(ex) {
@@ -454,8 +552,9 @@ async function renderLogger(ex) {
       <div><div class="stepper"><input name="duration" inputmode="text" value="${ref ? clock(ref.duration_s) : ""}" placeholder="28:30"></div><div class="stepper-label">time (h:mm:ss)</div></div></div>`;
   }
   box.innerHTML = `<h3>Log a set</h3><div class="card">
-      <div class="row" style="margin-bottom:10px">${thumb(ex)}<div class="grow"><b>${esc(ex.name)}</b>
-        <div class="muted">${planItem ? `Target ${planItem.target_sets} sets${planItem.target_reps ? ` × ${planItem.target_reps}` : ""} · ` : ""}${last.length ? `Last time: ${last.map((s) => esc(s.text)).join(", ")}` : "First time — no history yet"}</div></div></div>
+      ${ex.image ? `<div class="hero-pic"><img src="${esc(ex.image)}" alt=""></div>` : ""}
+      <div style="margin-bottom:10px"><b style="font-size:17px">${esc(ex.name)}</b>
+        <div class="muted">${planItem ? `Target ${planItem.target_sets} sets${planItem.target_reps ? ` × ${planItem.target_reps}` : ""} · ` : ""}${last.length ? `Last time: ${last.map((s) => esc(s.text)).join(", ")}` : "First time — no history yet"}</div></div>
       ${fields}
       <button class="btn block" style="margin-top:12px" data-log>Log set ${done.length + 1}</button></div>`;
 
@@ -663,7 +762,7 @@ async function editPlan(id) {
       } else if (e.target.closest("[data-remove]") && item) {
         if (await guard(() => api(`/plans/${id}/items/${item.dataset.item}`, { method: "DELETE" }))) refresh();
       } else if (e.target.closest("[data-add]")) {
-        const ex = await pickExercise("Add to plan");
+        const ex = await pickExercise("Add to plan", p.items.length ? p.items[p.items.length - 1].exercise.group : null);
         if (ex && (await guard(() => api(`/plans/${id}/items`, { method: "POST", body: { exercise_id: ex.id, target_sets: 3 } })))) refresh();
       } else if (e.target.closest("[data-rename]")) {
         const name = window.prompt("Plan name", p.name);
