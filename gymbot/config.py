@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
@@ -35,12 +35,19 @@ def _int(value: str | None, default: int | None) -> int | None:
         raise ValueError(f"Expected an integer, got {value!r}") from exc
 
 
+def default_database_url() -> str:
+    """SQLite fallback when DATABASE_URL is unset; uses a mounted /data volume if there is one."""
+    data_dir = Path("/data")
+    folder = data_dir if data_dir.is_dir() else PROJECT_ROOT
+    return f"sqlite+aiosqlite:///{(folder / 'gymbot.db').as_posix()}"
+
+
 @dataclass(frozen=True)
 class Settings:
     """Runtime configuration, read from environment variables or a .env file."""
 
     telegram_bot_token: str = ""
-    database_url: str = f"sqlite+aiosqlite:///{(PROJECT_ROOT / 'gymbot.db').as_posix()}"
+    database_url: str = field(default_factory=default_database_url)
     # Public HTTPS base URL of this service (used for the Mini App button).
     # On Railway this falls back to RAILWAY_PUBLIC_DOMAIN automatically.
     webapp_url: str = ""
