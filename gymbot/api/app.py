@@ -25,6 +25,7 @@ from gymbot.db import Database, ExerciseKind, User
 from gymbot.services import auth as auth_svc
 from gymbot.services import catalog, plans, reminders, stats, users, workouts
 from gymbot.services import dashboard as dashboard_svc
+from gymbot.services import templates
 from gymbot.services.plans import PlanError
 from gymbot.services.reminders import ReminderError
 from gymbot.utils import local_today, parse_date_token, parse_hhmm, parse_timezone
@@ -277,7 +278,12 @@ async def exercise_last(request: Request, s: AsyncSession, user: User):
     ex = await _exercise_or_404(s, user, path_int(request, "exercise_id"))
     active = await workouts.get_active(s, user.id)
     last = await workouts.last_time_sets(s, user.id, ex.id, active.id if active else None)
-    return {"exercise": ser.exercise(ex), "last_time": [ser.workout_set(x) for x in last]}
+    records = await stats.personal_records(s, user.id, ex.id)
+    return {
+        "exercise": ser.exercise(ex),
+        "last_time": [ser.workout_set(x) for x in last],
+        "record": ser.record(records[0]) if records else None,  # best before today's workout
+    }
 
 
 # ---------------------------------------------------------------- active workout
@@ -443,6 +449,42 @@ async def _plan_or_404(request: Request, s: AsyncSession, user: User):
 
 async def list_plans(request: Request, s: AsyncSession, user: User):
     return {"plans": [ser.plan(p) for p in await plans.list_plans(s, user.id)]}
+
+
+async def list_templates(request: Request, s: AsyncSession, user: User):
+    have = await templates.existing_names(s, user.id)
+    return {
+        "templates": [
+            {
+                "key": t.key,
+                "name": t.name,
+                "description": t.description,
+                "exercises": [i.exercise for i in t.items],
+                "added": t.name.lower() in have,
+            }
+            for t in templates.TEMPLATES
+        ]
+    }
+
+
+async def add_templates(request: Request, s: AsyncSession, user: User):
+    keys = (await body(request)).get("keys")
+    if not isinstance(keys, list) or not keys or not all(isinstance(k, str) for k in keys):
+        raise ApiError(422, "'keys' must be a list of template keys")
+    try:
+        created = await templates.add_templates(s, user.id, keys)
+    except PlanError as exc:
+        raise ApiError(422, str(exc)) from exc
+    return JSONResponse({"created": [ser.plan(p) for p in created]}, status_code=201)
+
+
+async def delete_my_data(request: Request, s: AsyncSession, user: User):
+    confirm = str((await body(request)).get("confirm", "")).strip().lower()
+    if confirm != users.DELETE_CONFIRMATION:
+        raise ApiError(422, f"Type '{users.DELETE_CONFIRMATION}' to confirm")
+    counts = await users.delete_all_data(s, user.id)
+    log.info("User %s deleted all their data: %s", user.id, counts)
+    return {"deleted": counts}
 
 
 async def create_plan(request: Request, s: AsyncSession, user: User):
@@ -642,6 +684,9 @@ def routes(settings: Settings) -> list:
         Route("/api/stats/records", api(records), methods=["GET"]),
         Route("/api/bodyweight", api(body_weight), methods=["GET"]),
         Route("/api/bodyweight", api(add_body_weight), methods=["POST"]),
+        Route("/api/plans/templates", api(list_templates), methods=["GET"]),
+        Route("/api/plans/templates", api(add_templates), methods=["POST"]),
+        Route("/api/me/data", api(delete_my_data), methods=["DELETE"]),
         Route("/api/plans", api(list_plans), methods=["GET"]),
         Route("/api/plans", api(create_plan), methods=["POST"]),
         Route("/api/plans/{plan_id}", api(get_plan), methods=["GET"]),

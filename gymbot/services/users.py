@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from gymbot.db.models import BodyWeight, User, utcnow
+from gymbot.db.models import BodyWeight, Exercise, Plan, PlanItem, Reminder, User, Workout, WorkoutSet, utcnow
 
 MIN_REST, MAX_REST = 15, 900
 
@@ -62,6 +62,30 @@ async def body_weights(session: AsyncSession, user_id: int, limit: int | None = 
     rows = list((await session.scalars(stmt)).all())
     rows.reverse()
     return rows
+
+
+DELETE_CONFIRMATION = "delete data"
+
+
+async def delete_all_data(session: AsyncSession, user_id: int) -> dict[str, int]:
+    """Erase a user's training data: workouts and sets, plans, reminders, body weights, custom exercises.
+
+    The account itself (timezone, rest timer, app sign-ins) is kept. Rows are deleted
+    children-first so this doesn't depend on database-level cascades.
+    """
+    plan_ids = select(Plan.id).where(Plan.user_id == user_id)
+    workout_ids = select(Workout.id).where(Workout.user_id == user_id)
+    counts = {
+        "sets": (await session.execute(delete(WorkoutSet).where(WorkoutSet.workout_id.in_(workout_ids)))).rowcount,
+        "workouts": (await session.execute(delete(Workout).where(Workout.user_id == user_id))).rowcount,
+    }
+    await session.execute(delete(PlanItem).where(PlanItem.plan_id.in_(plan_ids)))
+    counts["plans"] = (await session.execute(delete(Plan).where(Plan.user_id == user_id))).rowcount
+    counts["reminders"] = (await session.execute(delete(Reminder).where(Reminder.user_id == user_id))).rowcount
+    counts["body_weights"] = (await session.execute(delete(BodyWeight).where(BodyWeight.user_id == user_id))).rowcount
+    # Custom exercises are only referenced by this user's sets and plan items, which are gone now.
+    counts["custom_exercises"] = (await session.execute(delete(Exercise).where(Exercise.owner_id == user_id))).rowcount
+    return counts
 
 
 async def set_rest(session: AsyncSession, user: User, seconds: int) -> User:

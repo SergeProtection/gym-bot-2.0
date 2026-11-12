@@ -29,8 +29,9 @@ async def test_workout_pr_and_summary(db):
         bench = await _any(s, "strength")
         w, created = await workouts.start(s, 1)
         assert created
-        _, prs = await workouts.log_set(s, w, bench, weight=60, reps=8)
-        assert prs == []  # first time: no PR
+        s1, prs = await workouts.log_set(s, w, bench, weight=60, reps=8)
+        assert len(prs) == 1 and prs[0].startswith("First record: 60 kg")  # baseline, not a PR
+        assert not s1.is_pr
         summary = await workouts.finish(s, w)
         assert summary.set_count == 1 and summary.volume_kg == 480
 

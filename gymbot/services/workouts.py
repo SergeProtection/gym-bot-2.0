@@ -98,9 +98,26 @@ async def _previous_bests(session: AsyncSession, user_id: int, exercise_id: int,
     return dict(zip(keys, row))
 
 
+FIRST_RECORD = "First record"
+
+
+def first_record_message(kind: str, *, reps, weight, duration, distance) -> str:
+    if kind == ExerciseKind.TIME.value:
+        result = fmt_clock(duration)
+    elif kind == ExerciseKind.CARDIO.value:
+        result = f"{fmt_num(distance)} km in {fmt_clock(duration)}"
+    elif weight:
+        result = f"{fmt_weight(weight)} × {reps}"
+    else:
+        result = f"{reps} reps"
+    return f"{FIRST_RECORD}: {result} — beat it next time"
+
+
+def is_first_record(msg: str) -> bool:
+    return msg.startswith(FIRST_RECORD)
+
+
 def _pr_messages(kind: str, prev: dict, *, reps, weight, duration, distance) -> list[str]:
-    if not prev["count"]:
-        return []  # first time doing this exercise: nothing to beat yet
     msgs: list[str] = []
     if kind == ExerciseKind.STRENGTH.value:
         if weight and weight > 0:
@@ -154,7 +171,15 @@ async def log_set(
         reps, weight = None, None
 
     prev = await _previous_bests(session, workout.user_id, exercise.id, weight, reps)
-    prs = _pr_messages(exercise.kind, prev, reps=reps, weight=weight, duration=duration, distance=distance)
+    values = {"reps": reps, "weight": weight, "duration": duration, "distance": distance}
+    if prev["count"]:
+        prs = _pr_messages(exercise.kind, prev, **values)
+        is_pr = bool(prs)
+    else:
+        # First set ever of this exercise: it becomes the baseline record. Announced,
+        # but not counted as a PR (there was nothing to beat).
+        prs = [first_record_message(exercise.kind, **values)]
+        is_pr = False
     s = WorkoutSet(
         workout_id=workout.id,
         exercise_id=exercise.id,
@@ -163,7 +188,7 @@ async def log_set(
         weight_kg=weight,
         duration_s=duration,
         distance_km=distance,
-        is_pr=bool(prs),
+        is_pr=is_pr,
         created_at=utcnow(),
     )
     session.add(s)

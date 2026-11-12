@@ -554,7 +554,8 @@ async function renderLogger(ex) {
   box.innerHTML = `<h3>Log a set</h3><div class="card">
       ${ex.image ? `<div class="hero-pic"><img src="${esc(ex.image)}" alt=""></div>` : ""}
       <div style="margin-bottom:10px"><b style="font-size:17px">${esc(ex.name)}</b>
-        <div class="muted">${planItem ? `Target ${planItem.target_sets} sets${planItem.target_reps ? ` × ${planItem.target_reps}` : ""} · ` : ""}${last.length ? `Last time: ${last.map((s) => esc(s.text)).join(", ")}` : "First time — no history yet"}</div></div>
+        <div class="muted">${planItem ? `Target ${planItem.target_sets} sets${planItem.target_reps ? ` × ${planItem.target_reps}` : ""} · ` : ""}${last.length ? `Last time: ${last.map((s) => esc(s.text)).join(", ")}` : "First time — your first set becomes your record"}</div>
+        ${lastRes?.record ? `<div class="record-line">🏆 Your record: <b>${esc(recordText(lastRes.record))}</b></div>` : ""}</div>
       ${fields}
       <button class="btn block" style="margin-top:12px" data-log>Log set ${done.length + 1}</button></div>`;
 
@@ -586,7 +587,9 @@ async function renderLogger(ex) {
     btn.disabled = false;
     if (!res) return;
     state.workout = res.workout;
-    if (res.prs.length) { haptic("success"); toast(`🏆 New PR! ${res.prs[0]}`, "pr"); } else haptic("medium");
+    if (!res.prs.length) haptic("medium");
+    else if (res.prs[0].startsWith("First record")) { haptic("success"); toast(`📌 ${res.prs[0]}`); }
+    else { haptic("success"); toast(`🏆 New PR! ${res.prs[0]}`, "pr"); }
     startRest(res.rest_seconds);
     await renderWorkout();
   };
@@ -701,6 +704,40 @@ async function showExerciseChart(id) {
 
 // ------------------------------------------------------------------ plans tab
 
+async function chooseTemplates() {
+  const data = await guard(() => api("/plans/templates"));
+  if (!data) return;
+  const picked = new Set(data.templates.filter((t) => !t.added).map((t) => t.key));
+  openSheet("Ready-made workout days", `
+    <p class="muted" style="margin-top:0">Pick the days you want. They're added to your plans, and you can change or delete them any time.</p>
+    <div class="card tight">${data.templates.map((t) => `
+      <label class="list-item tpl ${t.added ? "added" : ""}">
+        <input type="checkbox" data-key="${esc(t.key)}" ${picked.has(t.key) ? "checked" : ""} ${t.added ? "disabled" : ""}>
+        <span class="grow"><b>${esc(t.name)}</b>${t.added ? ` <span class="muted">· already added</span>` : ""}
+          <span class="muted" style="display:block">${esc(t.description)}</span>
+          <span class="muted ellipsis" style="display:block">${esc(t.exercises.join(" · "))}</span></span>
+      </label>`).join("")}</div>
+    <button class="btn block" style="margin-top:12px" data-addtpl>Add selected</button>`, (root) => {
+    const btn = root.querySelector("[data-addtpl]");
+    const sync = () => {
+      const n = root.querySelectorAll("[data-key]:checked:not(:disabled)").length;
+      btn.disabled = n === 0;
+      btn.textContent = n ? `Add ${n} workout day${n === 1 ? "" : "s"}` : "Nothing selected";
+    };
+    sync();
+    root.addEventListener("change", sync);
+    btn.addEventListener("click", async () => {
+      const keys = [...root.querySelectorAll("[data-key]:checked:not(:disabled)")].map((c) => c.dataset.key);
+      btn.disabled = true;
+      const res = await guard(() => api("/plans/templates", { method: "POST", body: { keys } }));
+      if (!res) { sync(); return; }
+      closeSheet();
+      toast(`Added ${res.created.length} workout day${res.created.length === 1 ? "" : "s"}`);
+      renderPlans();
+    });
+  });
+}
+
 async function renderPlans() {
   const data = await guard(() => api("/plans"));
   if (!data) return;
@@ -708,9 +745,11 @@ async function renderPlans() {
       <div class="row between"><b>${esc(p.name)}</b><button class="btn small ghost" data-edit="${p.id}">Edit</button></div>
       <div class="muted" style="margin:6px 0 10px">${p.items.length ? p.items.map((i) => `${esc(i.exercise.name)} ${i.target_sets}×${i.target_reps || "–"}`).join(" · ") : "No exercises yet"}</div>
       ${p.items.length ? `<button class="btn block small" data-go="${p.id}">▶️ Start this plan</button>` : ""}</div>`).join("")
-      : `<div class="card empty">No plans yet. Create one, or save a finished workout as a plan.</div>`}
-    <button class="btn block" data-new>+ New plan</button>`;
+      : `<div class="card empty">No plans yet. Add the ready-made workout days below, create your own, or save a finished workout as a plan.</div>`}
+    <button class="btn block" data-new>+ New plan</button>
+    <button class="btn ghost block" style="margin-top:8px" data-templates>📋 Ready-made workout days</button>`;
   view.onclick = async (e) => {
+    if (e.target.closest("[data-templates]")) return chooseTemplates();
     const go = e.target.closest("[data-go]");
     if (go) {
       const res = await guard(() => api("/workout/start", { method: "POST", body: { plan_id: +go.dataset.go } }));
@@ -814,6 +853,12 @@ async function renderSettings() {
 
     <h3>App</h3>
     <div class="card" data-home><span class="muted">Checking…</span></div>
+
+    <h3>Danger zone</h3>
+    <div class="card">
+      <div class="muted" style="margin-bottom:10px">Permanently delete all your workouts, records, plans, reminders, body weights and custom exercises. Your settings stay.</div>
+      <button class="btn danger block" data-wipe>Delete all my data…</button>
+    </div>
     <p class="muted" style="text-align:center">GymBot · ${esc(u.first_name || "")} · ${me.total_workouts} workout${me.total_workouts === 1 ? "" : "s"} logged</p>`;
 
   renderHomeScreen($("[data-home]", view));
@@ -846,12 +891,44 @@ async function renderSettings() {
       if (await guard(() => api("/reminders", { method: "POST", body: { weekdays, at_time } }))) { toast("Reminder added"); renderSettings(); }
       return;
     }
+    if (t.closest("[data-wipe]")) return confirmWipe();
     if (t.closest("[data-addbw]")) {
       const v = parseFloat($("[data-bw]", view).value.replace(",", "."));
       if (!v) return toast("Enter your weight in kg");
       if (await guard(() => api("/bodyweight", { method: "POST", body: { weight_kg: v } }))) { toast("Logged"); renderSettings(); }
     }
   };
+}
+
+const WIPE_PHRASE = "delete data";
+
+function confirmWipe() {
+  openSheet("Delete all data", `
+    <div class="card">
+      <p style="margin-top:0"><b>This can't be undone.</b> All your workouts, records, plans, reminders, body weights and custom exercises will be deleted.</p>
+      <label class="field"><span>Type <b>${WIPE_PHRASE}</b> to confirm</span>
+        <input class="input" data-phrase autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${WIPE_PHRASE}"></label>
+      <button class="btn block wipe" data-dowipe disabled>Delete everything</button>
+    </div>`, (root) => {
+    const input = root.querySelector("[data-phrase]");
+    const btn = root.querySelector("[data-dowipe]");
+    input.addEventListener("input", () => { btn.disabled = input.value.trim().toLowerCase() !== WIPE_PHRASE; });
+    btn.addEventListener("click", async () => {
+      if (input.value.trim().toLowerCase() !== WIPE_PHRASE) return;
+      btn.disabled = true;
+      const res = await guard(() => api("/me/data", { method: "DELETE", body: { confirm: input.value } }));
+      if (!res) { btn.disabled = false; return; }
+      stopRest();
+      currentExercise = null;
+      state.exercises = [];
+      state.workout = null;
+      closeSheet();
+      haptic("success");
+      toast("All your data was deleted");
+      refreshMe();
+      switchTab("workout");
+    });
+  });
 }
 
 // ------------------------------------------------------------------ home screen shortcut

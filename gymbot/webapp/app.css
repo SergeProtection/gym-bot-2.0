@@ -188,3 +188,10 @@ label.field > span { display: block; font-size: 13px; color: var(--hint); margin
   max-width: 640px; margin: 0 auto; padding: 12px 16px 10px; background: linear-gradient(to top, var(--bg2) 75%, transparent); }
 .startbar .go { flex: 1; min-height: 56px; font-size: 17px; border-radius: 16px; box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 35%, transparent); }
 .startbar .more { width: 56px; min-height: 56px; border-radius: 16px; font-size: 22px; background: var(--card); }
+
+/* ---------- records, templates, data wipe */
+.record-line { margin-top: 6px; font-size: 13px; padding: 6px 10px; border-radius: 8px; background: color-mix(in srgb, var(--gold) 18%, var(--bg2)); }
+.tpl { cursor: pointer; align-items: flex-start; }
+.tpl input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); flex: none; }
+.tpl.added { opacity: .6; cursor: default; }
+.btn.wipe { background: var(--danger); color: #fff; }

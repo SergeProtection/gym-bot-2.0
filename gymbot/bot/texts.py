@@ -6,7 +6,7 @@ from html import escape
 
 from gymbot.db.models import Exercise, ExerciseKind, WorkoutSet
 from gymbot.services.stats import ExerciseRecord, PeriodSummary
-from gymbot.services.workouts import WorkoutSummary, describe_set
+from gymbot.services.workouts import WorkoutSummary, describe_set, is_first_record
 from gymbot.utils import fmt_clock, fmt_num, fmt_span, fmt_weight, to_local, tz_label
 
 HELP = """<b>GymBot</b> — log workouts, track PRs and progress.
@@ -61,7 +61,10 @@ def exercise_card(ex: Exercise, done: list[WorkoutSet], last_time: list[WorkoutS
 def set_logged(ex: Exercise, s: WorkoutSet, number: int, prs: list[str], rest_s: int) -> str:
     lines = [f"✅ Set {number}: <b>{describe_set(s, ex.kind)}</b> — {escape(ex.name)}"]
     for p in prs:
-        lines.append(f"🏆 <b>New PR!</b> {escape(p)}")
+        if is_first_record(p):
+            lines.append(f"📌 {escape(p)}")
+        else:
+            lines.append(f"🏆 <b>New PR!</b> {escape(p)}")
     lines.append(f"⏱ Rest {fmt_clock(rest_s)} — I'll ping you. Type the next set any time.")
     return "\n".join(lines)
 
