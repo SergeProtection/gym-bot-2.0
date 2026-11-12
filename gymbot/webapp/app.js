@@ -641,7 +641,12 @@ async function renderSettings() {
       ${bw.entries.length ? `<div class="muted" style="margin:6px 0">Latest: <b>${num(bw.entries[bw.entries.length - 1].weight_kg)} kg</b> · ${fmtDate(bw.entries[bw.entries.length - 1].measured_at)}</div>` : ""}
       <div class="row"><input class="input grow" inputmode="decimal" placeholder="e.g. 82.5" data-bw><button class="btn small" data-addbw>Log kg</button></div>
     </div>
+
+    <h3>Home screen</h3>
+    <div class="card" data-home><span class="muted">Checking…</span></div>
     <p class="muted" style="text-align:center">GymBot · ${esc(u.first_name || "")} · ${me.total_workouts} workout${me.total_workouts === 1 ? "" : "s"} logged</p>`;
+
+  renderHomeScreen($("[data-home]", view));
 
   const saveTz = async (tz) => {
     const res = await guard(() => api("/me", { method: "PATCH", body: { timezone: tz } }));
@@ -677,6 +682,40 @@ async function renderSettings() {
       if (await guard(() => api("/bodyweight", { method: "POST", body: { weight_kg: v } }))) { toast("Logged"); renderSettings(); }
     }
   };
+}
+
+// ------------------------------------------------------------------ home screen shortcut
+
+function renderHomeScreen(box) {
+  if (!box) return;
+  const supported = tg && tg.initData && typeof tg.addToHomeScreen === "function" && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0");
+  if (!supported) {
+    box.innerHTML = `<span class="muted">Your Telegram app can't add shortcuts yet. Update Telegram and open this page again.</span>`;
+    return;
+  }
+  const show = (status) => {
+    if (status === "added") {
+      box.innerHTML = `<span>✅ GymBot is on your home screen.</span>`;
+    } else if (status === "unsupported") {
+      box.innerHTML = `<span class="muted">This device doesn't support home screen shortcuts from Telegram.</span>`;
+    } else {
+      box.innerHTML = `<div class="muted" style="margin-bottom:8px">Open GymBot straight from your phone's home screen.</div>
+        <button class="btn block" data-addhome>📲 Add to home screen</button>`;
+      box.querySelector("[data-addhome]").addEventListener("click", () => {
+        try { tg.addToHomeScreen(); } catch (_) { toast("Couldn't open the prompt — update Telegram and try again"); }
+      });
+    }
+  };
+  show("unknown");
+  try { tg.checkHomeScreenStatus((status) => show(status)); } catch (_) { /* keep the button */ }
+}
+
+if (tg && typeof tg.onEvent === "function") {
+  tg.onEvent("homeScreenAdded", () => {
+    toast("Added to your home screen 🎉");
+    const box = $("[data-home]");
+    if (box) box.innerHTML = `<span>✅ GymBot is on your home screen.</span>`;
+  });
 }
 
 // ------------------------------------------------------------------ navigation
