@@ -19,6 +19,11 @@ const session = {
   clear() { try { localStorage.removeItem(SESSION_KEY); } catch (_) { /* private mode */ } },
 };
 
+// Set once per device after the app has moved a new account off the UTC default,
+// so a user who later picks UTC on purpose isn't switched back.
+const TZ_AUTO_KEY = "gymbot.tz-auto";
+const deviceTz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (_) { return ""; } };
+
 const $ = (sel, root = document) => root.querySelector(sel);
 const view = $("#view");
 const state = { me: null, workout: null, groups: [], exercises: [], rest: null, tab: "workout" };
@@ -820,7 +825,7 @@ async function renderSettings() {
   const [me, rem, bw] = await Promise.all([guard(() => api("/me")), guard(() => api("/reminders")), guard(() => api("/bodyweight"))]);
   if (!me || !rem || !bw) return;
   const u = me.user;
-  const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const browserTz = deviceTz();
   view.innerHTML = `
     <h3>Training</h3>
     <div class="card">
@@ -834,6 +839,7 @@ async function renderSettings() {
 
     <h3>Reminders</h3>
     <div class="card">
+      <div class="muted" style="margin-bottom:6px">Times are in your timezone: <b>${esc(u.timezone_label)}</b></div>
       ${rem.reminders.length ? rem.reminders.map((r) => `<div class="row between" style="padding:6px 0" data-r="${r.id}">
         <span><b>${esc(r.at_time)}</b> <span class="muted">${esc(r.label.replace(/ at .*$/, ""))}</span></span>
         <span class="row"><label class="switch"><input type="checkbox" data-toggle ${r.enabled ? "checked" : ""}><i></i></label>
@@ -888,7 +894,7 @@ async function renderSettings() {
     if (t.closest("[data-addr]")) {
       const weekdays = [...view.querySelectorAll("[data-day].on")].map((b) => +b.dataset.day);
       const at_time = $("[data-time]", view).value;
-      if (await guard(() => api("/reminders", { method: "POST", body: { weekdays, at_time } }))) { toast("Reminder added"); renderSettings(); }
+      if (await guard(() => api("/reminders", { method: "POST", body: { weekdays, at_time } }))) { toast(`Reminder added (${u.timezone_label})`); renderSettings(); }
       return;
     }
     if (t.closest("[data-wipe]")) return confirmWipe();
@@ -1022,6 +1028,21 @@ async function refreshMe() {
   const el = $("#streak");
   el.hidden = me.streak_weeks < 1;
   el.textContent = `🔥 ${me.streak_weeks} week${me.streak_weeks > 1 ? "s" : ""}`;
+  adoptDeviceTimezone(me.user);
+}
+
+// New accounts start on UTC, so reminders would fire at UTC times. On first open,
+// switch the account to this device's timezone (once per device).
+async function adoptDeviceTimezone(user) {
+  const tz = deviceTz();
+  if (!user || user.timezone !== "UTC" || !tz || /^(Etc\/)?(UTC|GMT|UCT|Universal|Zulu)$/i.test(tz)) return;
+  try { if (localStorage.getItem(TZ_AUTO_KEY)) return; } catch (_) { return; }
+  const res = await api("/me", { method: "PATCH", body: { timezone: tz } }).catch(() => null);
+  if (!res) return;
+  try { localStorage.setItem(TZ_AUTO_KEY, "1"); } catch (_) { /* private mode */ }
+  state.me.user = res;
+  toast(`Timezone set to ${res.timezone_label}. Change it in Settings.`);
+  if (state.tab === "settings") renderSettings();
 }
 
 async function boot() {
